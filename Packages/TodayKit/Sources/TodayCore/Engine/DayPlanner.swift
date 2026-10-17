@@ -459,7 +459,8 @@ private struct PlanBuilder {
                 alerts.append(PlanAlert(
                     kind: .careConflict,
                     message: "\(planner.names(busy)): \(item.title) \(span(item)) while watching the kids (\(span(window.start, window.end))).",
-                    people: busy
+                    people: busy,
+                    end: min(item.end, window.end)
                 ))
             }
         }
@@ -470,7 +471,8 @@ private struct PlanBuilder {
             alerts.append(PlanAlert(
                 kind: .loopConflict,
                 message: "\(planner.names([loop.driver])): \(item.title) \(span(item)) overlaps the \(loop.title.lowercased()) (\(loop.start.short)–\(loop.end.short)).",
-                people: [loop.driver]
+                people: [loop.driver],
+                end: min(item.end, loopEnd)
             ))
         }
     }

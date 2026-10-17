@@ -190,6 +190,13 @@ public struct PlanAlert: Sendable, Equatable {
     public let kind: Kind
     public let message: String
     public let people: [PersonID]
+    /// When a conflict stops mattering (the overlap is over); `nil` for
+    /// alerts about the whole day.
+    public var end: Date? = nil
+
+    public func isOver(at now: Date) -> Bool {
+        end.map { $0 <= now } ?? false
+    }
 }
 
 /// What a kid needs today. Lane-mates who need the same things share one

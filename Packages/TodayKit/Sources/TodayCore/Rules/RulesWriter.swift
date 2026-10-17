@@ -7,6 +7,7 @@ import Foundation
 public indirect enum JSONValue: Equatable, Sendable {
     case string(String)
     case int(Int)
+    case number(Double)
     case bool(Bool)
     case null
     case array([JSONValue])
@@ -49,6 +50,11 @@ public enum RulesWriter {
         m.append(.init("dayWindow", .object([
             .init("start", time(rules.dayWindow.start)), .init("end", time(rules.dayWindow.end)),
         ])))
+        if let home = rules.home {
+            var h: [JSONMember] = [.init("latitude", .number(home.latitude)), .init("longitude", .number(home.longitude))]
+            if let label = home.label { h.append(.init("label", .string(label))) }
+            m.append(.init("home", .object(h)))
+        }
         m.append(.init("people", .array(rules.people.map(person))))
         m.append(.init("calendars", .array(rules.calendars.map(calendar))))
         m.append(.init("blocks", .array(rules.blocks.map(block))))
@@ -264,6 +270,7 @@ enum JSONPrinter {
         switch value {
         case let .string(s): return quote(s)
         case let .int(i): return String(i)
+        case let .number(n): return number(n)
         case let .bool(b): return b ? "true" : "false"
         case .null: return "null"
         case let .array(items):
@@ -278,6 +285,13 @@ enum JSONPrinter {
             guard parts.allSatisfy({ $0 != nil }) else { return nil }
             return "{ " + parts.map { $0! }.joined(separator: ", ") + " }"
         }
+    }
+
+    /// The shortest text that reads back as the same Double ("41.878").
+    static func number(_ value: Double) -> String {
+        guard value.isFinite else { return "0" }
+        if value == value.rounded(), abs(value) < 1e15 { return String(Int(value)) }
+        return "\(value)"
     }
 
     static func quote(_ s: String) -> String {

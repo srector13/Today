@@ -50,6 +50,36 @@ public enum SampleHousehold {
         return planner.plan(for: date, input: input(on: date))
     }
 
+    /// The seeded screenshots' clock: 2:40 PM, as in the approved mockup.
+    public static func now(on date: LocalDate) -> Date {
+        HouseholdClock.chicago.instant(date, LocalTime(hour: 14, minute: 40)!)
+    }
+
+    /// Events over a run of days, for the rule editor's preview.
+    public static func events(from start: LocalDate, days: Int) -> [SourceEvent] {
+        (0..<days).flatMap { events(on: start.adding(days: $0)) }
+    }
+
+    /// A fall day in Chicago; Tuesday's rain arrives at pickup time.
+    public static func weather(on date: LocalDate) -> WeatherSnapshot {
+        let clock = HouseholdClock.chicago
+        let rainy = date == tuesday
+        let temps = [48, 49, 51, 53, 55, 57, 59, 61, 63, 64, 64, 62, 60, 58, 56, 54]
+        let rain = rainy
+            ? [0, 0, 0, 0, 0, 0.1, 0.1, 0.1, 0.1, 0.2, 0.6, 0.45, 0.1, 0, 0, 0]
+            : [Double](repeating: 0, count: temps.count)
+        let hours = temps.indices.map { index in
+            WeatherSnapshot.Hour(
+                time: clock.instant(date, LocalTime(hour: 6 + index, minute: 0)!),
+                temperature: temps[index],
+                precipitationChance: rain[index],
+                symbol: rain[index] >= WeatherSnapshot.likely ? "cloud.rain.fill" : (index > 12 ? "cloud.moon.fill" : "cloud.sun.fill")
+            )
+        }
+        return WeatherSnapshot(temperature: 64, condition: rainy ? "Partly cloudy" : "Sunny",
+                               symbol: rainy ? "cloud.sun.fill" : "sun.max.fill", high: 68, low: 51, hours: hours)
+    }
+
     /// Open reminders in the Kids list.
     public static let reminders = [
         SourceReminder(id: "r1", listTitle: "Kids", title: "Picture day form - Emma", due: tuesday),

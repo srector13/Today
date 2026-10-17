@@ -15,6 +15,8 @@ public struct HouseholdRules: Sendable, Equatable {
     public var todo: [String]
     /// The hours the lanes draw.
     public var dayWindow: DayWindow
+    /// Where the weather card's forecast is for; `nil` until set.
+    public var home: HomeLocation?
     public var people: [Person]
     public var calendars: [CalendarRule]
     /// Recurring blocks that are on no calendar: work, school, preschool.
@@ -56,7 +58,7 @@ public struct HouseholdRules: Sendable, Equatable {
 
 extension HouseholdRules: Decodable {
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion, timeZone, todo, dayWindow, people, calendars, blocks
+        case schemaVersion, timeZone, todo, dayWindow, home, people, calendars, blocks
         case schoolCalendars, care, pickupLoop, needs, reminderLists, assignmentRules
         case birthdays, checkIns, importance
     }
@@ -69,6 +71,7 @@ extension HouseholdRules: Decodable {
         timeZone = try c.decode(String.self, forKey: .timeZone)
         todo = try c.decodeIfPresent([String].self, forKey: .todo) ?? []
         dayWindow = try c.decodeIfPresent(DayWindow.self, forKey: .dayWindow) ?? .standard
+        home = try c.decodeIfPresent(HomeLocation.self, forKey: .home)
         people = try c.decode([Person].self, forKey: .people)
         calendars = try c.decodeIfPresent([CalendarRule].self, forKey: .calendars) ?? []
         blocks = try c.decodeIfPresent([BlockRule].self, forKey: .blocks) ?? []
@@ -183,6 +186,13 @@ public struct CalendarRule: Sendable, Equatable {
     public var role: CalendarRole
     public var owner: PersonID?
     public var defaultOwner: PersonID?
+
+    public init(title: String, role: CalendarRole, owner: PersonID? = nil, defaultOwner: PersonID? = nil) {
+        self.title = title
+        self.role = role
+        self.owner = owner
+        self.defaultOwner = defaultOwner
+    }
 }
 
 extension CalendarRule: Decodable {
@@ -225,6 +235,20 @@ public struct BlockRule: Sendable, Equatable, Identifiable {
     public var end: LocalTime
     /// For school: the calendar whose terms and days off apply.
     public var schoolCalendar: String?
+
+    public init(
+        id: String, title: String, kind: BlockKind, who: [PersonID], days: DaySet,
+        start: LocalTime, end: LocalTime, schoolCalendar: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+        self.who = who
+        self.days = days
+        self.start = start
+        self.end = end
+        self.schoolCalendar = schoolCalendar
+    }
 }
 
 extension BlockRule: Decodable {
@@ -254,6 +278,16 @@ public struct SchoolCalendar: Sendable, Equatable {
     public var lastDay: LocalDate?
     public var noSchool: [NoSchoolDays]
     public var earlyRelease: [EarlyRelease]
+
+    public init(
+        firstDay: LocalDate? = nil, lastDay: LocalDate? = nil,
+        noSchool: [NoSchoolDays] = [], earlyRelease: [EarlyRelease] = []
+    ) {
+        self.firstDay = firstDay
+        self.lastDay = lastDay
+        self.noSchool = noSchool
+        self.earlyRelease = earlyRelease
+    }
 
     public func noSchool(on date: LocalDate) -> NoSchoolDays? {
         noSchool.first { $0.from <= date && date <= $0.to }
@@ -292,6 +326,12 @@ public struct NoSchoolDays: Sendable, Equatable {
     public var from: LocalDate
     public var to: LocalDate
     public var label: String?
+
+    public init(from: LocalDate, to: LocalDate, label: String? = nil) {
+        self.from = from
+        self.to = to
+        self.label = label
+    }
 }
 
 extension NoSchoolDays: Decodable {
@@ -330,6 +370,12 @@ public struct EarlyRelease: Sendable, Equatable {
     /// When school lets out instead of the block's usual end.
     public var end: LocalTime
     public var label: String?
+
+    public init(date: LocalDate, end: LocalTime, label: String? = nil) {
+        self.date = date
+        self.end = end
+        self.label = label
+    }
 }
 
 extension EarlyRelease: Decodable {
@@ -382,6 +428,19 @@ public struct CareRule: Sendable, Equatable, Identifiable {
     public var days: DaySet
     public var from: LocalTime
     public var until: CareEnd
+
+    public init(
+        id: String, title: String? = nil, caregivers: [PersonID], kids: [PersonID],
+        days: DaySet, from: LocalTime, until: CareEnd
+    ) {
+        self.id = id
+        self.title = title
+        self.caregivers = caregivers
+        self.kids = kids
+        self.days = days
+        self.from = from
+        self.until = until
+    }
 }
 
 extension CareRule: Decodable {
@@ -439,6 +498,21 @@ public struct PickupLoopRule: Sendable, Equatable {
     public var minutesBetweenStops: Int
     public var minutesToHome: Int
     public var stops: [LoopStop]
+
+    public init(
+        title: String = "Pickup loop", driver: PersonID, days: DaySet, startsAt: LoopStart,
+        fallbackStart: LocalTime? = nil, minutesBetweenStops: Int = 15, minutesToHome: Int = 15,
+        stops: [LoopStop]
+    ) {
+        self.title = title
+        self.driver = driver
+        self.days = days
+        self.startsAt = startsAt
+        self.fallbackStart = fallbackStart
+        self.minutesBetweenStops = minutesBetweenStops
+        self.minutesToHome = minutesToHome
+        self.stops = stops
+    }
 }
 
 extension PickupLoopRule: Decodable {
@@ -465,6 +539,12 @@ public struct LoopStop: Sendable, Equatable {
     public var collect: [PersonID]
     /// The stop happens only on days this block runs (no school, no school stop).
     public var onlyWhen: String?
+
+    public init(place: String, collect: [PersonID], onlyWhen: String? = nil) {
+        self.place = place
+        self.collect = collect
+        self.onlyWhen = onlyWhen
+    }
 }
 
 extension LoopStop: Decodable {
@@ -489,6 +569,13 @@ public struct NeedRule: Sendable, Equatable {
     public var items: [String]
     public var days: DaySet?
     public var onDaysOf: String?
+
+    public init(who: [PersonID], items: [String], days: DaySet? = nil, onDaysOf: String? = nil) {
+        self.who = who
+        self.items = items
+        self.days = days
+        self.onDaysOf = onDaysOf
+    }
 }
 
 extension NeedRule: Decodable {
@@ -513,6 +600,11 @@ extension NeedRule: Decodable {
 public struct ReminderListRule: Sendable, Equatable {
     public var title: String
     public var defaultOwner: PersonID?
+
+    public init(title: String, defaultOwner: PersonID? = nil) {
+        self.title = title
+        self.defaultOwner = defaultOwner
+    }
 }
 
 extension ReminderListRule: Decodable {
@@ -561,6 +653,12 @@ public struct CheckInRule: Sendable, Equatable {
     /// Breaks through Focus (for the pickup check-in during work).
     public var timeSensitive: Bool
 
+    public init(kind: CheckInKind, at: LocalTime, timeSensitive: Bool = false) {
+        self.kind = kind
+        self.at = at
+        self.timeSensitive = timeSensitive
+    }
+
     public static let defaults = [
         CheckInRule(kind: .morning, at: LocalTime(hour: 6, minute: 30)!, timeSensitive: false),
         CheckInRule(kind: .midday, at: LocalTime(hour: 12, minute: 0)!, timeSensitive: false),
@@ -582,11 +680,53 @@ extension CheckInRule: Decodable {
     }
 }
 
+// MARK: - Home
+
+/// Where the household lives, for the weather forecast. Nothing else uses it.
+public struct HomeLocation: Sendable, Equatable {
+    public var latitude: Double
+    public var longitude: Double
+    /// What the editor shows, e.g. "Home" or a town name.
+    public var label: String?
+
+    public init(latitude: Double, longitude: Double, label: String? = nil) {
+        self.latitude = latitude
+        self.longitude = longitude
+        self.label = label
+    }
+
+    /// Rounded to three decimals (about 100 m): plenty for a forecast, and
+    /// the file doesn't pin the house.
+    public static func rounded(latitude: Double, longitude: Double, label: String? = nil) -> HomeLocation {
+        func round3(_ value: Double) -> Double { (value * 1000).rounded() / 1000 }
+        return HomeLocation(latitude: round3(latitude), longitude: round3(longitude), label: label)
+    }
+}
+
+extension HomeLocation: Decodable {
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case latitude, longitude, label
+    }
+
+    public init(from decoder: any Decoder) throws {
+        try decoder.rejectUnknownKeys(CodingKeys.self)
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        latitude = try c.decode(Double.self, forKey: .latitude)
+        longitude = try c.decode(Double.self, forKey: .longitude)
+        label = try c.decodeIfPresent(String.self, forKey: .label)
+    }
+}
+
 // MARK: - Window and importance
 
 public struct DayWindow: Sendable, Equatable {
     public var start: LocalTime
     public var end: LocalTime
+
+    public init(start: LocalTime, end: LocalTime) {
+        self.start = start
+        self.end = end
+    }
 
     public static let standard = DayWindow(start: LocalTime(hour: 6, minute: 0)!, end: LocalTime(hour: 21, minute: 0)!)
 }

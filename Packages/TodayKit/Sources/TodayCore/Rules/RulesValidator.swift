@@ -55,6 +55,14 @@ private struct Validation {
         if rules.dayWindow.start >= rules.dayWindow.end {
             error("dayWindow", "start must be before end.")
         }
+        if let home = rules.home {
+            if !(-90...90).contains(home.latitude) {
+                error("home.latitude", "Use a latitude from -90 to 90.")
+            }
+            if !(-180...180).contains(home.longitude) {
+                error("home.longitude", "Use a longitude from -180 to 180.")
+            }
+        }
     }
 
     private mutating func checkPeople() {
