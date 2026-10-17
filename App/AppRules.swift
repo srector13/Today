@@ -1,10 +1,23 @@
 import Foundation
 import TodayCore
 
-/// The household rules the app ships with (`Rules/household.json`).
+/// The household rules the app ships with (`Rules/household.json`), and
+/// where the app keeps its own editable copy.
 enum AppRules {
+    static let appGroup = "group.PolarReailty.Today"
+
     static var bundledURL: URL? {
         Bundle.main.url(forResource: "household", withExtension: "json")
+    }
+
+    /// The App Group container, so the widget reads the same rules. Unsigned
+    /// builds (CI, or a re-sign without the group) have no container; the
+    /// app's own Application Support folder stands in.
+    static var storeDirectory: URL {
+        if let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) {
+            return group.appendingPathComponent("Household", isDirectory: true)
+        }
+        return URL.applicationSupportDirectory.appendingPathComponent("Household", isDirectory: true)
     }
 
     static func load() -> Result<LoadedRules, RulesError> {

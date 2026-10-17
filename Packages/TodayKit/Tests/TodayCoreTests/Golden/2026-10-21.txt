@@ -1,15 +1,20 @@
 Wednesday, October 21, 2026  (America/Chicago)
 
 School       in session 8:15–3:30 · Emma
-Pickup loop  3:30 School (Emma) → 3:45 Grandma & Grandpa's (Nora & Twins) → home ~4:00
+Pickup loop  3:30 School (Emma) → 3:45 Grandparents' (Nora & Twins) → home ~4:00
 
 Alerts
   ! [careConflict] Grandma: Nana's book club 1:00–2:30 while watching the kids (7:45–3:45).
   ! [loopConflict] Sam: Call with vendor 3:15–3:45 overlaps the pickup loop (3:30–4:00).
 
 Needs
-  Emma       Library book
-  Twins      Diaper bag
+  Emma       Library book, Picture day form - Emma, Return library book (Emma)
+  Twins      Diaper bag, Twins: sunscreen
+
+Birthdays
+  Aunt Jo    2026-10-24 (in 3 days, turns 40)
+  Uncle Ray  2026-11-30 (in 40 days)
+  Leo & Max  2026-12-09 (in 49 days, turns 2)
 
             6a  7a  8a  9a  10a 11a 12p 1p  2p  3p  4p  5p  6p  7p  8p
 Us
@@ -20,32 +25,33 @@ Kids
   Nora      ·······CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCP··EE················
   Twins     ·······CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCP····················
 Grandparents
-  Grandpa   ·······CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC·····················
+  Jess      ·······CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC···········EEEE······
   Grandma   ·······CCCCCCCCCCCCCCCCCCCCCEEEEEECCCCC·····················
   P pickupLoop · E appointment · A activity · S school · C care · W work · · nothing · ? no data
 
 Us
-  Sam
+  Sam  #5E9EFF
     08:30–17:00  Work
     15:15–15:45  Call with vendor  [Sam: calendarOwner]
-    15:30–16:00  Pickup loop · School 3:30 → Grandma & Grandpa's 3:45 → home ~4:00
-  Kate
+    15:30–16:00  Pickup loop · School 3:30 → Grandparents' 3:45 → home ~4:00
+  Kate  #C58CFF
     10:00–11:30  Client review  [Kate: calendarOwner]
     18:00–19:00  Yoga  [Kate: calendarOwner]
 Kids
-  Emma
+  Emma  #FF9F45
     08:15–15:30  School
     15:30–16:00  Pickup → home · Picked up at School 3:30
-  Nora
-    07:45–15:45  With Grandma & Grandpa
-    15:45–16:00  Pickup → home · Picked up at Grandma & Grandpa's 3:45
+  Nora  #FF7AB6
+    07:45–15:45  With the grandparents
+    15:45–16:00  Pickup → home · Picked up at Grandparents' 3:45
     16:30–17:00  Haircut – Nora  [Family: namedInTitle]
-  Twins
-    07:45–15:45  With Grandma & Grandpa
-    15:45–16:00  Pickup → home · Picked up at Grandma & Grandpa's 3:45
+  Twins  #3FD4C2
+    07:45–15:45  With the grandparents
+    15:45–16:00  Pickup → home · Picked up at Grandparents' 3:45
 Grandparents
-  Grandpa
+  Jess  #6AD07A
     07:45–15:45  Watching Nora & Twins
-  Grandma
+    18:30–19:30  SERC board call  [Sam: rule "SERC → Jess"]
+  Grandma  #FFD34E
     07:45–15:45  Watching Nora & Twins
     13:00–14:30  Nana's book club  [Family: namedInTitle]

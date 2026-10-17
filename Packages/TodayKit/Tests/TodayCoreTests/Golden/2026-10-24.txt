@@ -6,7 +6,13 @@ Alerts
   (none)
 
 Needs
-  (none)
+  Emma       Picture day form - Emma, Return library book (Emma)
+  Twins      Twins: sunscreen
+
+Birthdays
+  Aunt Jo    2026-10-24 (today, turns 40)
+  Uncle Ray  2026-11-30 (in 37 days)
+  Leo & Max  2026-12-09 (in 46 days, turns 2)
 
             6a  7a  8a  9a  10a 11a 12p 1p  2p  3p  4p  5p  6p  7p  8p
 Us
@@ -17,27 +23,27 @@ Kids
   Nora      ················EEEEEEEE····································
   Twins     ····························································
 Grandparents
-  Grandpa   ··························EEEE······························
+  Jess      ··························EEEE······························
   Grandma   ····························································
   P pickupLoop · E appointment · A activity · S school · C care · W work · · nothing · ? no data
 
 Us
-  Sam
+  Sam  #5E9EFF
     08:30–17:00  Work
-  Kate
+  Kate  #C58CFF
     08:00–09:30  Farmers market  [Kate: calendarOwner]
 Kids
-  Emma
+  Emma  #FF9F45
     10:00–12:00  Birthday party — Emma & Nora  [Family: namedInTitle]  (with Nora)
-  Nora
+  Nora  #FF7AB6
     10:00–12:00  Birthday party — Emma & Nora  [Family: namedInTitle]  (with Emma)
-  Twins
+  Twins  #3FD4C2
     (nothing scheduled)
 Grandparents
-  Grandpa
+  Jess  #6AD07A
     all day      Trip to Dallas: Grandma & Grandpa  [Family: namedInTitle]  (with Grandma)
     12:30–13:30  Lunch at the club  [Family: defaultOwner]
-  Grandma
-    all day      Trip to Dallas: Grandma & Grandpa  [Family: namedInTitle]  (with Grandpa)
+  Grandma  #FFD34E
+    all day      Trip to Dallas: Grandma & Grandpa  [Family: namedInTitle]  (with Jess)
 
 Not in the rules (ignored): US Holidays

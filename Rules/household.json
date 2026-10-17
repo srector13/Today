@@ -1,56 +1,118 @@
 {
   "$schema": "./household.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "timeZone": "America/Chicago",
 
   "todo": [
-    "Replace every <placeholder> name, and add the nicknames you use in calendar titles as aliases (e.g. Papa, Nana).",
+    "Replace every <placeholder> name (and Grandma's, if you like), and add the nicknames you use in calendar titles as aliases.",
     "Set the three calendar titles exactly as iOS shows them: the shared family calendar, yours, and your wife's.",
     "Preschool hours are a guess (09:00-11:30). Who does Tue/Thu drop-off and pickup?",
     "In-laws' morning hand-off time is a guess (08:00). Do they come to you, or do you drop off?",
     "On a weekday with no kindergarten, who has the eldest, and when does the loop run? fallbackStart is a guess (17:00).",
     "Add the 2026-27 school calendar: firstDay, lastDay, noSchool days and earlyRelease days (and preschool's, if different).",
     "Loop stop spacing (15 min) and drive home (15 min) are estimates.",
-    "Add recurring needs (library day, show-and-tell, gym shoes, ...)."
+    "Add recurring needs (library day, show-and-tell, gym shoes, ...).",
+    "Which Reminders list holds the kids' needs? Add it under reminderLists."
   ],
 
   "dayWindow": { "start": "06:00", "end": "21:00" },
 
   "people": [
-    { "id": "dad",     "name": "<Your name>",      "group": "parents",      "aliases": ["Dad"] },
-    { "id": "mom",     "name": "<Wife's name>",    "group": "parents",      "aliases": ["Mom"] },
-    { "id": "kinder",  "name": "<Kindergartener>", "group": "kids" },
-    { "id": "pre",     "name": "<Preschooler>",    "group": "kids" },
-    { "id": "twinA",   "name": "<Twin 1>",         "group": "kids", "lane": "Twins", "aliases": ["Twins"] },
-    { "id": "twinB",   "name": "<Twin 2>",         "group": "kids", "lane": "Twins", "aliases": ["Twins"] },
-    { "id": "grandpa", "name": "Grandpa",          "group": "grandparents" },
-    { "id": "grandma", "name": "Grandma",          "group": "grandparents" }
+    {
+      "id": "dad",
+      "name": "<Your name>",
+      "group": "parents",
+      "aliases": ["Dad"],
+      "color": "#5E9EFF"
+    },
+    {
+      "id": "mom",
+      "name": "<Wife's name>",
+      "group": "parents",
+      "aliases": ["Mom"],
+      "color": "#C58CFF"
+    },
+    { "id": "kinder", "name": "<Kindergartener>", "group": "kids", "color": "#FF9F45" },
+    { "id": "pre", "name": "<Preschooler>", "group": "kids", "color": "#FF7AB6" },
+    {
+      "id": "twinA",
+      "name": "<Twin 1>",
+      "group": "kids",
+      "aliases": ["Twins"],
+      "lane": "Twins",
+      "color": "#3FD4C2"
+    },
+    {
+      "id": "twinB",
+      "name": "<Twin 2>",
+      "group": "kids",
+      "aliases": ["Twins"],
+      "lane": "Twins",
+      "color": "#3FD4C2"
+    },
+    {
+      "id": "grandpa",
+      "name": "Jess",
+      "group": "grandparents",
+      "aliases": ["Grandpa"],
+      "color": "#6AD07A"
+    },
+    { "id": "grandma", "name": "Grandma", "group": "grandparents", "color": "#FFD34E" }
   ],
 
   "calendars": [
-    { "title": "<Family calendar>", "role": "shared",   "defaultOwner": "grandpa" },
-    { "title": "<Your calendar>",   "role": "personal", "owner": "dad" },
+    { "title": "<Family calendar>", "role": "shared", "defaultOwner": "grandpa" },
+    { "title": "<Your calendar>", "role": "personal", "owner": "dad" },
     { "title": "<Wife's calendar>", "role": "personal", "owner": "mom" }
   ],
 
   "blocks": [
-    { "id": "work", "title": "Work", "kind": "work", "who": ["dad"],
-      "days": "daily", "start": "08:30", "end": "17:00" },
-    { "id": "school", "title": "School", "kind": "school", "who": ["kinder"],
-      "days": "weekdays", "start": "08:15", "end": "15:30", "schoolCalendar": "district" },
-    { "id": "preschool", "title": "Preschool", "kind": "school", "who": ["pre"],
-      "days": ["tue", "thu"], "start": "09:00", "end": "11:30", "schoolCalendar": "preschool" }
+    {
+      "id": "work",
+      "title": "Work",
+      "kind": "work",
+      "who": ["dad"],
+      "days": "daily",
+      "start": "08:30",
+      "end": "17:00"
+    },
+    {
+      "id": "school",
+      "title": "School",
+      "kind": "school",
+      "who": ["kinder"],
+      "days": "weekdays",
+      "start": "08:15",
+      "end": "15:30",
+      "schoolCalendar": "district"
+    },
+    {
+      "id": "preschool",
+      "title": "Preschool",
+      "kind": "school",
+      "who": ["pre"],
+      "days": ["tue", "thu"],
+      "start": "09:00",
+      "end": "11:30",
+      "schoolCalendar": "preschool"
+    }
   ],
 
   "schoolCalendars": {
-    "district":  { "noSchool": [], "earlyRelease": [] },
+    "district": { "noSchool": [], "earlyRelease": [] },
     "preschool": { "noSchool": [], "earlyRelease": [] }
   },
 
   "care": [
-    { "id": "inlaws", "title": "With Grandma & Grandpa",
-      "caregivers": ["grandma", "grandpa"], "kids": ["pre", "twinA", "twinB"],
-      "days": "weekdays", "from": "08:00", "until": "pickupLoop" }
+    {
+      "id": "inlaws",
+      "title": "With the grandparents",
+      "caregivers": ["grandma", "grandpa"],
+      "kids": ["pre", "twinA", "twinB"],
+      "days": "weekdays",
+      "from": "08:00",
+      "until": "pickupLoop"
+    }
   ],
 
   "pickupLoop": {
@@ -63,24 +125,40 @@
     "minutesToHome": 15,
     "stops": [
       { "place": "School", "collect": ["kinder"], "onlyWhen": "school" },
-      { "place": "Grandma & Grandpa's", "collect": ["pre", "twinA", "twinB"] }
+      { "place": "Grandparents'", "collect": ["pre", "twinA", "twinB"] }
     ]
   },
 
   "needs": [],
 
+  "reminderLists": [],
+
+  "assignmentRules": [
+    {
+      "id": "serc",
+      "name": "SERC → Jess",
+      "enabled": true,
+      "match": "all",
+      "conditions": [{ "field": "title", "op": "contains", "value": "SERC" }],
+      "actions": [{ "assignTo": ["grandpa"] }],
+      "stop": true
+    }
+  ],
+
+  "birthdays": { "lookaheadDays": 30 },
+
   "checkIns": [
-    { "kind": "morning",   "at": "06:30" },
-    { "kind": "midday",    "at": "12:00" },
+    { "kind": "morning", "at": "06:30" },
+    { "kind": "midday", "at": "12:00" },
     { "kind": "afternoon", "at": "15:15", "timeSensitive": true }
   ],
 
   "importance": {
-    "pickupLoop": "high",
-    "appointment": "normal",
-    "activity": "normal",
+    "work": "background",
     "school": "low",
+    "activity": "normal",
     "care": "background",
-    "work": "background"
+    "pickupLoop": "high",
+    "appointment": "normal"
   }
 }

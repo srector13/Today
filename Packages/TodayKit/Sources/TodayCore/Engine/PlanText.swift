@@ -45,16 +45,26 @@ public enum PlanText {
         }
 
         out.append("")
+        out.append("Birthdays")
+        if plan.birthdays.isEmpty { out.append("  (none soon)") }
+        for birthday in plan.birthdays {
+            let when = birthday.daysAway == 0 ? "today" : birthday.daysAway == 1 ? "tomorrow" : "in \(birthday.daysAway) days"
+            let turning = birthday.turning.map { ", turns \($0)" } ?? ""
+            out.append("  \(pad(birthday.name, 10)) \(birthday.date.iso) (\(when)\(turning))")
+        }
+
+        out.append("")
         out += chart(plan)
 
         out.append("")
         for group in plan.laneGroups {
             out.append(group.group.title)
             for lane in group.lanes {
+                let header = "  \(lane.label)  \(lane.color.hex)"
                 if case let .noData(reason) = lane.data {
-                    out.append("  \(lane.label)  [NO DATA: \(reason)]")
+                    out.append("\(header)  [NO DATA: \(reason)]")
                 } else {
-                    out.append("  \(lane.label)")
+                    out.append(header)
                 }
                 if lane.items.isEmpty {
                     out.append(lane.data.isKnown ? "    (nothing scheduled)" : "    (unknown)")
@@ -62,6 +72,13 @@ public enum PlanText {
                 for item in lane.items {
                     out.append("    \(itemLine(item, plan: plan, lane: lane, planner: planner))")
                 }
+            }
+        }
+        if !plan.hiddenItems.isEmpty {
+            out.append("")
+            out.append("Hidden by rules")
+            for item in plan.hiddenItems {
+                out.append("    \(itemLine(item, plan: plan, lane: nil, planner: planner))")
             }
         }
         if !plan.missingCalendars.isEmpty {
@@ -117,7 +134,7 @@ public enum PlanText {
 
     // MARK: Lines
 
-    static func itemLine(_ item: TimelineItem, plan: DayPlan, lane: Lane, planner: DayPlanner) -> String {
+    static func itemLine(_ item: TimelineItem, plan: DayPlan, lane: Lane?, planner: DayPlanner) -> String {
         let time = item.isAllDay
             ? pad("all day", 11)
             : "\(plan.clock.localTime(of: item.start).hhmm)–\(plan.clock.localTime(of: item.end).hhmm)"
@@ -126,10 +143,14 @@ public enum PlanText {
             line += " · \(detail)"
         }
         if case let .calendar(title, attribution) = item.origin {
-            line += "  [\(title): \(attribution.rawValue)]"
+            var why = [attribution.label]
+            for rule in item.rules where attribution != .rule(rule) {
+                why.append("rule \"\(rule)\"")
+            }
+            line += "  [\(title): \(why.joined(separator: "; "))]"
         }
         // Who else shares an event, when it isn't just this lane.
-        let others = item.people.filter { !lane.people.contains($0) }
+        let others = item.people.filter { !(lane?.people.contains($0) ?? false) }
         if item.kind == .appointment, !others.isEmpty {
             line += "  (with \(planner.names(others)))"
         }

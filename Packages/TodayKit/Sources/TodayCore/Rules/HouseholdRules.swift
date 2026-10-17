@@ -24,12 +24,20 @@ public struct HouseholdRules: Sendable, Equatable {
     public var care: [CareRule]
     public var pickupLoop: PickupLoopRule?
     public var needs: [NeedRule]
+    /// Reminders lists whose open items show as kids' needs.
+    public var reminderLists: [ReminderListRule]
+    /// Mail-style rules, in order; they run before the built-in attribution.
+    public var assignmentRules: [AssignmentRule]
+    public var birthdays: BirthdaySettings
     public var checkIns: [CheckInRule]
     /// How much each kind of item matters, e.g. for "next up" on the Lock
     /// Screen. Kinds the file leaves out keep `Importance.defaults`.
     public var importance: [ItemKind: Importance]
 
-    public static let supportedSchemaVersion = 1
+    /// The version this app writes. Version 1 files (M1: no colors, photos
+    /// or assignment rules) still load.
+    public static let currentSchemaVersion = 2
+    public static let supportedSchemaVersions = 1...2
 
     public func person(_ id: PersonID) -> Person? {
         people.first { $0.id == id }
@@ -38,12 +46,19 @@ public struct HouseholdRules: Sendable, Equatable {
     public func importance(of kind: ItemKind) -> Importance {
         importance[kind] ?? Importance.defaults[kind] ?? .normal
     }
+
+    /// The person's chosen color, or a palette color by their position.
+    public func laneColor(of id: PersonID) -> LaneColor {
+        guard let index = people.firstIndex(where: { $0.id == id }) else { return LaneColor.palette[0] }
+        return people[index].color ?? LaneColor.palette[index % LaneColor.palette.count]
+    }
 }
 
 extension HouseholdRules: Decodable {
     enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion, timeZone, todo, dayWindow, people, calendars, blocks
-        case schoolCalendars, care, pickupLoop, needs, checkIns, importance
+        case schoolCalendars, care, pickupLoop, needs, reminderLists, assignmentRules
+        case birthdays, checkIns, importance
     }
 
     public init(from decoder: any Decoder) throws {
@@ -61,6 +76,9 @@ extension HouseholdRules: Decodable {
         care = try c.decodeIfPresent([CareRule].self, forKey: .care) ?? []
         pickupLoop = try c.decodeIfPresent(PickupLoopRule.self, forKey: .pickupLoop)
         needs = try c.decodeIfPresent([NeedRule].self, forKey: .needs) ?? []
+        reminderLists = try c.decodeIfPresent([ReminderListRule].self, forKey: .reminderLists) ?? []
+        assignmentRules = try c.decodeIfPresent([AssignmentRule].self, forKey: .assignmentRules) ?? []
+        birthdays = try c.decodeIfPresent(BirthdaySettings.self, forKey: .birthdays) ?? BirthdaySettings()
         checkIns = try c.decodeIfPresent([CheckInRule].self, forKey: .checkIns) ?? CheckInRule.defaults
         let rawImportance = try c.decodeIfPresent([String: Importance].self, forKey: .importance) ?? [:]
         var importance: [ItemKind: Importance] = [:]
@@ -102,13 +120,37 @@ public struct Person: Sendable, Equatable, Identifiable {
     /// People with the same lane label share one row ("Twins").
     public var lane: String?
     public var birthDate: LocalDate?
+    /// Their lane's color; `nil` picks one from the palette by position.
+    public var color: LaneColor?
+    /// A file name in the household's Photos folder; `nil` shows a monogram.
+    public var photo: String?
+
+    public init(
+        id: PersonID, name: String, group: PersonGroup, aliases: [String] = [], lane: String? = nil,
+        birthDate: LocalDate? = nil, color: LaneColor? = nil, photo: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.group = group
+        self.aliases = aliases
+        self.lane = lane
+        self.birthDate = birthDate
+        self.color = color
+        self.photo = photo
+    }
 
     public var laneLabel: String { lane ?? name }
+
+    /// The letter on a monogram avatar.
+    public var initials: String {
+        let words = laneLabel.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        return String(words.first?.first.map(String.init) ?? "?").uppercased()
+    }
 }
 
 extension Person: Decodable {
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case id, name, group, aliases, lane, birthDate
+        case id, name, group, aliases, lane, birthDate, color, photo
     }
 
     public init(from decoder: any Decoder) throws {
@@ -120,6 +162,8 @@ extension Person: Decodable {
         aliases = try c.decodeIfPresent([String].self, forKey: .aliases) ?? []
         lane = try c.decodeIfPresent(String.self, forKey: .lane)
         birthDate = try c.decodeIfPresent(LocalDate.self, forKey: .birthDate)
+        color = try c.decodeIfPresent(LaneColor.self, forKey: .color)
+        photo = try c.decodeIfPresent(String.self, forKey: .photo)
     }
 }
 
@@ -459,6 +503,49 @@ extension NeedRule: Decodable {
         items = try c.decode([String].self, forKey: .items)
         days = try c.decodeIfPresent(DaySet.self, forKey: .days)
         onDaysOf = try c.decodeIfPresent(String.self, forKey: .onDaysOf)
+    }
+}
+
+// MARK: - Reminders and birthdays
+
+/// A Reminders list whose open items become kids' needs. A reminder belongs
+/// to the people its title names ("Library book - Emma"), else `defaultOwner`.
+public struct ReminderListRule: Sendable, Equatable {
+    public var title: String
+    public var defaultOwner: PersonID?
+}
+
+extension ReminderListRule: Decodable {
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case title, defaultOwner
+    }
+
+    public init(from decoder: any Decoder) throws {
+        try decoder.rejectUnknownKeys(CodingKeys.self)
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        title = try c.decode(String.self, forKey: .title)
+        defaultOwner = try c.decodeIfPresent(PersonID.self, forKey: .defaultOwner)
+    }
+}
+
+public struct BirthdaySettings: Sendable, Equatable {
+    /// How far ahead the birthdays card looks.
+    public var lookaheadDays: Int
+
+    public init(lookaheadDays: Int = 30) {
+        self.lookaheadDays = lookaheadDays
+    }
+}
+
+extension BirthdaySettings: Decodable {
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case lookaheadDays
+    }
+
+    public init(from decoder: any Decoder) throws {
+        try decoder.rejectUnknownKeys(CodingKeys.self)
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        lookaheadDays = try c.decodeIfPresent(Int.self, forKey: .lookaheadDays) ?? 30
     }
 }
 

@@ -5,7 +5,7 @@ import TodayCore
 struct TodayApp: App {
     var body: some Scene {
         WindowGroup {
-            DebugPlanView(content: .forLaunch())
+            RootView()
                 .preferredColorScheme(.dark)
         }
     }

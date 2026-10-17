@@ -109,7 +109,7 @@ struct RulesLoadingTests {
     }
 
     @Test func wrongSchemaVersion() {
-        let issues = errors { $0["schemaVersion"] = 2 }
+        let issues = errors { $0["schemaVersion"] = 3 }
         #expect(issues.contains { $0.path == "schemaVersion" })
     }
 

@@ -16,4 +16,19 @@ final class AppRulesTests: XCTestCase {
     func testSeedIsOffWithoutTheLaunchKey() {
         XCTAssertNil(AppLaunch.seedDate)
     }
+
+    func testStoreDirectoryIsUsable() throws {
+        let directory = AppRules.storeDirectory
+        XCTAssertEqual(directory.lastPathComponent, "Household")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        XCTAssertTrue(FileManager.default.isWritableFile(atPath: directory.path))
+    }
+
+    @MainActor
+    func testModelLoadsTheBundledRules() async {
+        let model = AppModel()
+        await model.load()
+        XCTAssertEqual(model.status, .ready)
+        XCTAssertNotNil(model.plan)
+    }
 }

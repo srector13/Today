@@ -31,6 +31,8 @@ private struct Validation {
         checkCare()
         checkLoop()
         checkNeeds()
+        checkReminderLists()
+        checkAssignmentRules()
         checkCheckIns()
         for (index, item) in rules.todo.enumerated() {
             warn("todo[\(index)]", "Open question: \(item)")
@@ -40,8 +42,12 @@ private struct Validation {
     // MARK: Sections
 
     private mutating func checkHeader() {
-        if rules.schemaVersion != HouseholdRules.supportedSchemaVersion {
-            error("schemaVersion", "This app reads schema version \(HouseholdRules.supportedSchemaVersion), not \(rules.schemaVersion).")
+        if !HouseholdRules.supportedSchemaVersions.contains(rules.schemaVersion) {
+            let range = HouseholdRules.supportedSchemaVersions
+            error("schemaVersion", "This app reads schema versions \(range.lowerBound)–\(range.upperBound), not \(rules.schemaVersion).")
+        }
+        if rules.birthdays.lookaheadDays < 1 || rules.birthdays.lookaheadDays > 366 {
+            error("birthdays.lookaheadDays", "Use a number of days from 1 to 366.")
         }
         if TimeZone(identifier: rules.timeZone) == nil {
             error("timeZone", "\"\(rules.timeZone)\" is not a time zone. Use an IANA name like \"America/Chicago\".")
@@ -69,6 +75,61 @@ private struct Validation {
             checkPlaceholder(person.name, at: "\(path).name")
             for (j, alias) in person.aliases.enumerated() {
                 checkPlaceholder(alias, at: "\(path).aliases[\(j)]")
+            }
+            if let photo = person.photo,
+               photo.isEmpty || photo.contains("/") || photo.contains("\\") || photo.hasPrefix(".") {
+                error("\(path).photo", "\"\(photo)\" isn't a photo file name. Use a plain name like \"emma.jpg\".")
+            }
+        }
+    }
+
+    private mutating func checkReminderLists() {
+        var titles = Set<String>()
+        for (i, list) in rules.reminderLists.enumerated() {
+            let path = "reminderLists[\(i)]"
+            if !titles.insert(list.title.lowercased()).inserted {
+                error("\(path).title", "Reminders list \"\(list.title)\" is listed twice.")
+            }
+            if let owner = list.defaultOwner {
+                checkPerson(owner, at: "\(path).defaultOwner")
+            }
+        }
+    }
+
+    private mutating func checkAssignmentRules() {
+        var ids = Set<String>()
+        for (i, rule) in rules.assignmentRules.enumerated() {
+            let path = "assignmentRules[\(i)]"
+            if rule.id.trimmingCharacters(in: .whitespaces).isEmpty {
+                error("\(path).id", "The id is empty.")
+            } else if !ids.insert(rule.id).inserted {
+                error("\(path).id", "Duplicate rule id \"\(rule.id)\".")
+            }
+            if rule.name.trimmingCharacters(in: .whitespaces).isEmpty {
+                error("\(path).name", "Give the rule a name.")
+            }
+            if rule.conditions.isEmpty {
+                error("\(path).conditions", "Add at least one condition.")
+            }
+            for (j, condition) in rule.conditions.enumerated()
+            where condition.value.trimmingCharacters(in: .whitespaces).isEmpty {
+                error("\(path).conditions[\(j)].value", "The text to match is empty.")
+            }
+            if rule.actions.isEmpty {
+                error("\(path).actions", "Add at least one action.")
+            }
+            for (j, action) in rule.actions.enumerated() {
+                switch action {
+                case let .assignTo(people), let .alsoInclude(people):
+                    if people.isEmpty {
+                        error("\(path).actions[\(j)]", "Pick at least one person.")
+                    }
+                    for (k, id) in people.enumerated() {
+                        checkPerson(id, at: "\(path).actions[\(j)][\(k)]")
+                    }
+                case .hide, .importance:
+                    break
+                }
             }
         }
     }

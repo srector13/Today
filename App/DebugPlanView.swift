@@ -1,59 +1,118 @@
 import SwiftUI
 import TodayCore
 
-/// M1's stand-in for the main screen: the day plan as text, the same
+/// M1–M2's stand-in for the main screen: the day plan as text, the same
 /// rendering the golden tests pin. M3 replaces it with the lanes UI.
-struct DebugPlanView: View {
-    struct Content {
-        let title: String
-        let text: String
-        let isError: Bool
+struct RootView: View {
+    var body: some View {
+        if let seed = AppLaunch.seedDate {
+            SeededPlanView(date: seed)
+        } else {
+            LivePlanView()
+        }
+    }
+}
 
-        static func forLaunch() -> Content {
-            if let seed = AppLaunch.seedDate {
-                return seeded(seed)
-            }
-            switch AppRules.load() {
-            case let .success(loaded):
-                guard let planner = try? DayPlanner(rules: loaded.rules) else {
-                    return Content(title: "Rules error", text: "Unknown time zone \(loaded.rules.timeZone)", isError: true)
+/// A seeded sample day (`TODAY_SEED`), for screenshots and UI tests.
+struct SeededPlanView: View {
+    let date: LocalDate
+
+    var body: some View {
+        if let planner = try? DayPlanner(rules: SampleHousehold.rules) {
+            PlanTextView(title: "Sample \(date.iso)", text: PlanText.render(SampleHousehold.plan(for: date), planner: planner), isError: false)
+        } else {
+            PlanTextView(title: "Sample error", text: "The sample rules didn't load.", isError: true)
+        }
+    }
+}
+
+/// Today from the household store and this device's calendars.
+struct LivePlanView: View {
+    @State private var model = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        PlanTextView(title: "Today", text: text, isError: isError) {
+            if model.calendarAccess == .notDetermined {
+                Button {
+                    Task { await model.connectCalendars() }
+                } label: {
+                    Label("Connect Calendars & Reminders", systemImage: "calendar.badge.plus")
+                        .frame(maxWidth: .infinity)
                 }
-                let today = planner.clock.localDate(of: AppLaunch.now)
-                // Calendars arrive with EventKit in M2. Until then the app can
-                // see none, so calendar-backed lanes honestly show "no data".
-                let plan = planner.plan(for: today, events: [], calendarsOnDevice: [])
-                var text = PlanText.render(plan, planner: planner)
-                if !loaded.warnings.isEmpty {
-                    let warnings = loaded.warnings.map { "  \($0)" }.joined(separator: "\n")
-                    text = "Rules incomplete (\(loaded.warnings.count)):\n\(warnings)\n\n\(text)"
-                }
-                return Content(title: "Today", text: text, isError: false)
-            case let .failure(error):
-                return Content(title: "Rules error", text: error.description, isError: true)
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("connect.calendars")
             }
         }
-
-        static func seeded(_ date: LocalDate) -> Content {
-            guard let planner = try? DayPlanner(rules: SampleHousehold.rules) else {
-                return Content(title: "Sample error", text: "The sample rules didn't load.", isError: true)
+        .task { await model.load() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await model.refresh() }
             }
-            let text = PlanText.render(SampleHousehold.plan(for: date), planner: planner)
-            return Content(title: "Sample \(date.iso)", text: text, isError: false)
         }
     }
 
-    let content: Content
+    private var isError: Bool {
+        if case .rulesError = model.status { return true }
+        return false
+    }
+
+    private var text: String {
+        switch model.status {
+        case .loading:
+            return "Loading…"
+        case let .rulesError(message):
+            return message
+        case .ready:
+            var lines: [String] = []
+            switch model.calendarAccess {
+            case .granted: break
+            case .notDetermined: lines.append("Calendars not connected yet: every calendar lane shows no data.")
+            case .denied, .writeOnly: lines.append("Calendar access is off (Settings › Privacy › Calendars): calendar lanes show no data.")
+            }
+            if let recovered = model.recoveredFrom {
+                lines.append("The saved rules couldn't be read; using the last good copy.\n\(recovered)")
+            }
+            if model.bundledUpdateAvailable {
+                lines.append("A newer bundled household.json is available to import.")
+            }
+            if !model.warnings.isEmpty {
+                lines.append("Rules incomplete (\(model.warnings.count)):\n" + model.warnings.map { "  \($0)" }.joined(separator: "\n"))
+            }
+            if let plan = model.plan, let planner = model.planner {
+                lines.append(PlanText.render(plan, planner: planner))
+            }
+            return lines.joined(separator: "\n\n")
+        }
+    }
+}
+
+struct PlanTextView<Header: View>: View {
+    let title: String
+    let text: String
+    let isError: Bool
+    let header: Header
+
+    init(title: String, text: String, isError: Bool, @ViewBuilder header: () -> Header = { EmptyView() }) {
+        self.title = title
+        self.text = text
+        self.isError = isError
+        self.header = header()
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView([.vertical, .horizontal]) {
-                Text(content.text)
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(content.isError ? Color.red : Color.primary)
-                    .padding()
-                    .accessibilityIdentifier(content.isError ? "rules.error" : "plan.text")
+                VStack(alignment: .leading, spacing: 16) {
+                    header
+                    Text(text)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(isError ? Color.red : Color.primary)
+                        .accessibilityIdentifier(isError ? "rules.error" : "plan.text")
+                }
+                .padding()
             }
-            .navigationTitle(content.title)
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
         }
     }

@@ -18,20 +18,25 @@ public struct DayPlanner: Sendable {
     public let rules: HouseholdRules
     public let clock: HouseholdClock
     let attributor: TitleAttributor
+    let ruleEngine: RuleEngine
 
     public init(rules: HouseholdRules) throws {
         self.rules = rules
         clock = try HouseholdClock(timeZoneIdentifier: rules.timeZone)
         attributor = TitleAttributor(people: rules.people)
+        ruleEngine = RuleEngine(rules: rules.assignmentRules)
     }
 
-    /// - Parameter calendarsOnDevice: the names of the calendars the device
-    ///   can read. It has no default on purpose: a lane whose calendar is
-    ///   missing must show "no data", never a free day, so every caller has
-    ///   to say what it could see.
-    public func plan(for date: LocalDate, events: [SourceEvent], calendarsOnDevice: Set<String>) -> DayPlan {
+    /// `input.calendarsOnDevice` has no default on purpose: a lane whose
+    /// calendar is missing must show "no data", never a free day, so every
+    /// caller has to say what it could see.
+    public func plan(for date: LocalDate, input: DayInput) -> DayPlan {
         var builder = PlanBuilder(planner: self, date: date)
-        return builder.build(events: events, calendarsOnDevice: calendarsOnDevice)
+        return builder.build(input)
+    }
+
+    public func plan(for date: LocalDate, events: [SourceEvent], calendarsOnDevice: Set<String>) -> DayPlan {
+        plan(for: date, input: DayInput(events: events, calendarsOnDevice: calendarsOnDevice))
     }
 
     /// The block's times on `date`, or `nil` when it doesn't run: wrong
@@ -90,6 +95,17 @@ public struct DayPlanner: Sendable {
         return Self.list(labels)
     }
 
+    /// The next `month`/`day` on or after `date`. A Feb 29 birthday falls on
+    /// Feb 28 in other years.
+    static func nextBirthday(month: Int, day: Int, onOrAfter date: LocalDate) -> LocalDate? {
+        func occurrence(in year: Int) -> LocalDate? {
+            LocalDate(year: year, month: month, day: day)
+                ?? (month == 2 && day == 29 ? LocalDate(year: year, month: 2, day: 28) : nil)
+        }
+        guard let thisYear = occurrence(in: date.year) else { return nil }
+        return thisYear >= date ? thisYear : occurrence(in: date.year + 1)
+    }
+
     static func list(_ words: [String]) -> String {
         switch words.count {
         case 0: ""
@@ -108,6 +124,7 @@ private struct PlanBuilder {
     var clock: HouseholdClock { planner.clock }
 
     var items: [TimelineItem] = []
+    var hidden: [TimelineItem] = []
     var alerts: [PlanAlert] = []
 
     init(planner: DayPlanner, date: LocalDate) {
@@ -115,7 +132,7 @@ private struct PlanBuilder {
         self.date = date
     }
 
-    mutating func build(events: [SourceEvent], calendarsOnDevice: Set<String>) -> DayPlan {
+    mutating func build(_ input: DayInput) -> DayPlan {
         let weekday = date.weekday
         var occurrences: [String: BlockOccurrence] = [:]
         for block in rules.blocks {
@@ -124,7 +141,7 @@ private struct PlanBuilder {
             }
         }
 
-        let onDevice = Set(calendarsOnDevice.map { $0.lowercased() })
+        let onDevice = Set(input.calendarsOnDevice.map { $0.lowercased() })
         let missing = rules.calendars.filter { !onDevice.contains($0.title.lowercased()) }
         let noData = noDataReasons(missing)
 
@@ -132,11 +149,12 @@ private struct PlanBuilder {
         let schools = schoolStatuses(occurrences)
         let loop = planLoop(occurrences)
         let careWindows = addCare(occurrences, loop: loop)
-        let unlisted = addEvents(events.filter { onDevice.contains($0.calendarTitle.lowercased()) })
+        let unlisted = addEvents(input.events.filter { onDevice.contains($0.calendarTitle.lowercased()) })
         alertForSchools(schools, weekday: weekday)
         alertForConflicts(careWindows: careWindows, loop: loop)
 
         items.sort(by: Self.order)
+        hidden.sort(by: Self.order)
         return DayPlan(
             date: date,
             clock: clock,
@@ -146,7 +164,9 @@ private struct PlanBuilder {
             items: items,
             laneGroups: laneGroups(noData: noData),
             alerts: alerts,
-            needs: needs(occurrences),
+            needs: needs(occurrences, reminders: input.reminders),
+            birthdays: birthdays(input.birthdays),
+            hiddenItems: hidden,
             missingCalendars: missing.map(\.title),
             unlistedCalendars: unlisted
         )
@@ -356,7 +376,8 @@ private struct PlanBuilder {
 
     // MARK: Calendar events
 
-    /// Returns the calendars that had events but aren't in the rules.
+    /// Places each event by the assignment rules, then the built-in
+    /// attribution. Returns the calendars that had events nobody claimed.
     private mutating func addEvents(_ events: [SourceEvent]) -> [String] {
         let dayStart = clock.startOfDay(date)
         let dayEnd = clock.endOfDay(date)
@@ -364,26 +385,34 @@ private struct PlanBuilder {
         for event in events {
             let touchesDay = event.start < dayEnd && (event.end > dayStart || (event.end == event.start && event.start >= dayStart))
             guard touchesDay else { continue }
-            guard let calendar = rules.calendars.first(where: {
-                $0.title.caseInsensitiveCompare(event.calendarTitle) == .orderedSame
-            }) else {
-                unlisted.insert(event.calendarTitle)
+            guard let assignment = planner.assignment(of: event) else {
+                let listed = rules.calendars.contains {
+                    $0.title.caseInsensitiveCompare(event.calendarTitle) == .orderedSame
+                }
+                if !listed { unlisted.insert(event.calendarTitle) }
                 continue
             }
-            let (people, attribution) = planner.owners(of: event.title, on: calendar)
-            guard !people.isEmpty else { continue }
-            items.append(TimelineItem(
+            let calendarTitle = rules.calendars.first {
+                $0.title.caseInsensitiveCompare(event.calendarTitle) == .orderedSame
+            }?.title ?? event.calendarTitle
+            let item = TimelineItem(
                 id: "event:\(event.id)",
                 title: event.title,
                 kind: .appointment,
                 start: max(event.start, dayStart),
                 end: min(event.end, dayEnd),
                 isAllDay: event.isAllDay,
-                people: people,
-                importance: rules.importance(of: .appointment),
-                origin: .calendar(title: calendar.title, attribution: attribution),
-                detail: nil
-            ))
+                people: assignment.people,
+                importance: assignment.importance ?? rules.importance(of: .appointment),
+                origin: .calendar(title: calendarTitle, attribution: assignment.attribution),
+                detail: event.location,
+                rules: assignment.rules
+            )
+            if assignment.hidden {
+                hidden.append(item)
+            } else {
+                items.append(item)
+            }
         }
         return unlisted.sorted()
     }
@@ -448,16 +477,31 @@ private struct PlanBuilder {
 
     // MARK: Needs and lanes
 
-    private func needs(_ occurrences: [String: BlockOccurrence]) -> [KidNeed] {
+    /// Recurring needs from the rules, then open reminders from the rules'
+    /// Reminders lists (due today, overdue, or undated), by the people their
+    /// titles name or the list's default owner.
+    private func needs(_ occurrences: [String: BlockOccurrence], reminders: [SourceReminder]) -> [KidNeed] {
         var byKid: [PersonID: [String]] = [:]
+        func add(_ item: String, for kid: PersonID) {
+            if !byKid[kid, default: []].contains(item) {
+                byKid[kid, default: []].append(item)
+            }
+        }
         for rule in rules.needs {
             if let days = rule.days, !days.contains(date.weekday) { continue }
             if let block = rule.onDaysOf, occurrences[block] == nil { continue }
             for kid in rule.who {
-                for item in rule.items where !byKid[kid, default: []].contains(item) {
-                    byKid[kid, default: []].append(item)
-                }
+                for item in rule.items { add(item, for: kid) }
             }
+        }
+        for reminder in reminders {
+            if let due = reminder.due, due > date { continue }
+            guard let list = rules.reminderLists.first(where: {
+                $0.title.caseInsensitiveCompare(reminder.listTitle) == .orderedSame
+            }) else { continue }
+            let named = planner.attributor.people(namedIn: reminder.title)
+            let owners = named.isEmpty ? list.defaultOwner.map { [$0] } ?? [] : named
+            for owner in owners { add(reminder.title, for: owner) }
         }
         var result: [KidNeed] = []
         var handled = Set<PersonID>()
@@ -492,12 +536,48 @@ private struct PlanBuilder {
             let lanes = keys.map { key in
                 let people = members[key]!
                 let reason = people.compactMap { noData[$0] }.first
+                let first = rules.person(people[0])!
                 return Lane(id: key, label: labels[key]!, group: group, people: people,
                             items: Self.merged(items.filter { !Set($0.people).isDisjoint(with: people) }),
-                            data: reason.map { .noData(reason: $0) } ?? .known)
+                            data: reason.map { .noData(reason: $0) } ?? .known,
+                            color: rules.laneColor(of: first.id),
+                            photo: people.count == 1 ? first.photo : nil,
+                            initials: first.initials)
             }
             return lanes.isEmpty ? nil : LaneGroup(group: group, lanes: lanes)
         }
+    }
+
+    /// Household members' birthdays from the rules, plus the device's
+    /// Birthdays calendar, within the lookahead. A name both lists share is
+    /// shown once, as the household member.
+    private func birthdays(_ sources: [SourceBirthday]) -> [UpcomingBirthday] {
+        let lookahead = rules.birthdays.lookaheadDays
+        var found: [UpcomingBirthday] = []
+        func add(name: String, month: Int, day: Int, year: Int?, person: PersonID?) {
+            guard let next = DayPlanner.nextBirthday(month: month, day: day, onOrAfter: date) else { return }
+            let away = next.dayNumber - date.dayNumber
+            guard away <= lookahead else { return }
+            let key = name.lowercased()
+            if found.contains(where: { $0.name.lowercased() == key && $0.date == next }) { return }
+            found.append(UpcomingBirthday(name: name, date: next, daysAway: away,
+                                          turning: year.map { next.year - $0 }, person: person))
+        }
+        var handled = Set<PersonID>()
+        for person in rules.people where !handled.contains(person.id) {
+            guard let birth = person.birthDate else { continue }
+            // Lane-mates born the same day (the twins) share one entry.
+            let twins = person.lane.map { lane in
+                rules.people.filter { $0.lane == lane && $0.birthDate == birth }
+            } ?? [person]
+            handled.formUnion(twins.map(\.id))
+            add(name: DayPlanner.list(twins.map(\.name)), month: birth.month, day: birth.day,
+                year: birth.year, person: person.id)
+        }
+        for source in sources {
+            add(name: source.name, month: source.month, day: source.day, year: source.year, person: nil)
+        }
+        return found.sorted { ($0.daysAway, $0.name) < ($1.daysAway, $1.name) }
     }
 
     /// Lane-mates' identical items (the twins' care) become one item for both.

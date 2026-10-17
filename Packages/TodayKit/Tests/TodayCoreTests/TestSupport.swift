@@ -58,7 +58,7 @@ extension DayPlan {
         lanes.first { $0.label == label }
     }
 
-    /// "07:45–09:00 With Grandma & Grandpa" lines for one person, timed items only.
+    /// "07:45–09:00 With the grandparents" lines for one person, timed items only.
     func schedule(for person: PersonID) -> [String] {
         items(for: person).filter { !$0.isAllDay }.map { item in
             "\(clock.localTime(of: item.start).hhmm)–\(clock.localTime(of: item.end).hhmm) \(item.title)"

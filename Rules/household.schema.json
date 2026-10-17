@@ -5,67 +5,138 @@
   "description": "Everything about the household that isn't on a calendar. Times are 24-hour \"HH:mm\" strings in the file's timeZone; dates are \"YYYY-MM-DD\". The app also checks what a schema can't: every id a rule names exists, times run forward, and the pickup loop collects every kid in care.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "timeZone", "people"],
+  "required": [
+    "schemaVersion",
+    "timeZone",
+    "people"
+  ],
   "properties": {
-    "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "enum": [
+        1,
+        2
+      ],
+      "description": "2 adds lane colors, photos, reminder lists, birthdays and assignment rules. Version 1 files still load."
+    },
     "timeZone": {
       "type": "string",
       "description": "IANA zone every date and time here is written in. Today runs on America/Chicago.",
-      "examples": ["America/Chicago"]
+      "examples": [
+        "America/Chicago"
+      ]
     },
     "todo": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Open questions. Each shows as a 'rules incomplete' warning until removed."
     },
     "dayWindow": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["start", "end"],
+      "required": [
+        "start",
+        "end"
+      ],
       "properties": {
-        "start": { "$ref": "#/$defs/time" },
-        "end": { "$ref": "#/$defs/time" }
+        "start": {
+          "$ref": "#/$defs/time"
+        },
+        "end": {
+          "$ref": "#/$defs/time"
+        }
       },
       "description": "The hours the lanes draw."
     },
     "people": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/person" }
+      "items": {
+        "$ref": "#/$defs/person"
+      }
     },
     "calendars": {
       "type": "array",
-      "items": { "$ref": "#/$defs/calendar" }
+      "items": {
+        "$ref": "#/$defs/calendar"
+      }
     },
     "blocks": {
       "type": "array",
-      "items": { "$ref": "#/$defs/block" },
+      "items": {
+        "$ref": "#/$defs/block"
+      },
       "description": "Recurring stretches no calendar holds: work, school, preschool."
     },
     "schoolCalendars": {
       "type": "object",
-      "additionalProperties": { "$ref": "#/$defs/schoolCalendar" },
+      "additionalProperties": {
+        "$ref": "#/$defs/schoolCalendar"
+      },
       "description": "Terms, days off and early releases, by id. A school block names one with schoolCalendar."
     },
     "care": {
       "type": "array",
-      "items": { "$ref": "#/$defs/care" }
+      "items": {
+        "$ref": "#/$defs/care"
+      }
     },
-    "pickupLoop": { "$ref": "#/$defs/pickupLoop" },
+    "pickupLoop": {
+      "$ref": "#/$defs/pickupLoop"
+    },
     "needs": {
       "type": "array",
-      "items": { "$ref": "#/$defs/need" }
+      "items": {
+        "$ref": "#/$defs/need"
+      }
+    },
+    "reminderLists": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reminderList"
+      },
+      "description": "Reminders lists whose open items show as kids' needs."
+    },
+    "assignmentRules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/assignmentRule"
+      },
+      "description": "Mail-style rules, run top to bottom before the built-in attribution (names in titles, calendar owners)."
+    },
+    "birthdays": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lookaheadDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 366
+        }
+      },
+      "description": "How far ahead the birthdays card looks."
     },
     "checkIns": {
       "type": "array",
-      "items": { "$ref": "#/$defs/checkIn" }
+      "items": {
+        "$ref": "#/$defs/checkIn"
+      }
     },
     "importance": {
       "type": "object",
       "additionalProperties": false,
-      "propertyNames": { "$ref": "#/$defs/itemKind" },
-      "patternProperties": { ".*": { "$ref": "#/$defs/importance" } },
+      "propertyNames": {
+        "$ref": "#/$defs/itemKind"
+      },
+      "patternProperties": {
+        ".*": {
+          "$ref": "#/$defs/importance"
+        }
+      },
       "description": "How much each kind of item matters (for 'next up'). Kinds left out keep their defaults."
     }
   },
@@ -88,92 +159,258 @@
     "days": {
       "description": "\"daily\", \"weekdays\", \"weekends\", or a list like [\"tue\", \"thu\"].",
       "oneOf": [
-        { "enum": ["daily", "weekdays", "weekends"] },
+        {
+          "enum": [
+            "daily",
+            "weekdays",
+            "weekends"
+          ]
+        },
         {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }
+          "items": {
+            "enum": [
+              "mon",
+              "tue",
+              "wed",
+              "thu",
+              "fri",
+              "sat",
+              "sun"
+            ]
+          }
         }
       ]
     },
-    "itemKind": { "enum": ["work", "school", "activity", "care", "pickupLoop", "appointment"] },
-    "importance": { "enum": ["background", "low", "normal", "high"] },
+    "itemKind": {
+      "enum": [
+        "work",
+        "school",
+        "activity",
+        "care",
+        "pickupLoop",
+        "appointment"
+      ]
+    },
+    "importance": {
+      "enum": [
+        "background",
+        "low",
+        "normal",
+        "high"
+      ]
+    },
     "person": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "group"],
+      "required": [
+        "id",
+        "name",
+        "group"
+      ],
       "properties": {
-        "id": { "type": "string", "minLength": 1, "description": "Stable id the rest of the file uses. Don't change it when renaming." },
-        "name": { "type": "string", "minLength": 1, "description": "Shown on the lane and matched in calendar titles." },
-        "group": { "enum": ["parents", "kids", "grandparents"] },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable id the rest of the file uses. Don't change it when renaming."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Shown on the lane and matched in calendar titles."
+        },
+        "group": {
+          "enum": [
+            "parents",
+            "kids",
+            "grandparents"
+          ]
+        },
         "aliases": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Other words for this person in calendar titles (Papa, Mom, Twins)."
         },
-        "lane": { "type": "string", "description": "People with the same lane label share one row." },
-        "birthDate": { "$ref": "#/$defs/date" }
+        "lane": {
+          "type": "string",
+          "description": "People with the same lane label share one row."
+        },
+        "birthDate": {
+          "$ref": "#/$defs/date"
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#?[0-9A-Fa-f]{6}$",
+          "description": "Lane color, \"#RRGGBB\". Left out: a palette color by position."
+        },
+        "photo": {
+          "type": "string",
+          "pattern": "^[^./\\\\][^/\\\\]*$",
+          "description": "A file name in the app's Photos folder. The app sets this."
+        }
       }
     },
     "calendar": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["title", "role"],
+      "required": [
+        "title",
+        "role"
+      ],
       "properties": {
-        "title": { "type": "string", "description": "The calendar's name exactly as iOS shows it (case doesn't matter)." },
+        "title": {
+          "type": "string",
+          "description": "The calendar's name exactly as iOS shows it (case doesn't matter)."
+        },
         "role": {
-          "enum": ["shared", "personal"],
+          "enum": [
+            "shared",
+            "personal"
+          ],
           "description": "shared: an event belongs to defaultOwner unless its title names people, who then own it instead. personal: events belong to owner, plus anyone named."
         },
-        "owner": { "$ref": "#/$defs/personId" },
-        "defaultOwner": { "$ref": "#/$defs/personId" }
+        "owner": {
+          "$ref": "#/$defs/personId"
+        },
+        "defaultOwner": {
+          "$ref": "#/$defs/personId"
+        }
       },
       "oneOf": [
-        { "properties": { "role": { "const": "shared" } }, "required": ["defaultOwner"], "not": { "required": ["owner"] } },
-        { "properties": { "role": { "const": "personal" } }, "required": ["owner"], "not": { "required": ["defaultOwner"] } }
+        {
+          "properties": {
+            "role": {
+              "const": "shared"
+            }
+          },
+          "required": [
+            "defaultOwner"
+          ],
+          "not": {
+            "required": [
+              "owner"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "role": {
+              "const": "personal"
+            }
+          },
+          "required": [
+            "owner"
+          ],
+          "not": {
+            "required": [
+              "defaultOwner"
+            ]
+          }
+        }
       ]
     },
     "block": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "kind", "who", "days", "start", "end"],
+      "required": [
+        "id",
+        "title",
+        "kind",
+        "who",
+        "days",
+        "start",
+        "end"
+      ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "title": { "type": "string" },
-        "kind": { "enum": ["work", "school", "activity"] },
-        "who": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/personId" } },
-        "days": { "$ref": "#/$defs/days" },
-        "start": { "$ref": "#/$defs/time" },
-        "end": { "$ref": "#/$defs/time" },
-        "schoolCalendar": { "type": "string", "description": "Id in schoolCalendars whose term and days off apply." }
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "work",
+            "school",
+            "activity"
+          ]
+        },
+        "who": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/personId"
+          }
+        },
+        "days": {
+          "$ref": "#/$defs/days"
+        },
+        "start": {
+          "$ref": "#/$defs/time"
+        },
+        "end": {
+          "$ref": "#/$defs/time"
+        },
+        "schoolCalendar": {
+          "type": "string",
+          "description": "Id in schoolCalendars whose term and days off apply."
+        }
       }
     },
     "schoolCalendar": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "firstDay": { "$ref": "#/$defs/date" },
-        "lastDay": { "$ref": "#/$defs/date" },
+        "firstDay": {
+          "$ref": "#/$defs/date"
+        },
+        "lastDay": {
+          "$ref": "#/$defs/date"
+        },
         "noSchool": {
           "type": "array",
           "items": {
             "oneOf": [
-              { "$ref": "#/$defs/date" },
               {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["date"],
-                "properties": { "date": { "$ref": "#/$defs/date" }, "label": { "type": "string" } }
+                "$ref": "#/$defs/date"
               },
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["from", "to"],
+                "required": [
+                  "date"
+                ],
                 "properties": {
-                  "from": { "$ref": "#/$defs/date" },
-                  "to": { "$ref": "#/$defs/date" },
-                  "label": { "type": "string" }
+                  "date": {
+                    "$ref": "#/$defs/date"
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/date"
+                  },
+                  "to": {
+                    "$ref": "#/$defs/date"
+                  },
+                  "label": {
+                    "type": "string"
+                  }
                 }
               }
             ]
@@ -184,11 +421,20 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["date", "end"],
+            "required": [
+              "date",
+              "end"
+            ],
             "properties": {
-              "date": { "$ref": "#/$defs/date" },
-              "end": { "$ref": "#/$defs/time" },
-              "label": { "type": "string" }
+              "date": {
+                "$ref": "#/$defs/date"
+              },
+              "end": {
+                "$ref": "#/$defs/time"
+              },
+              "label": {
+                "type": "string"
+              }
             }
           }
         }
@@ -197,47 +443,116 @@
     "care": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "caregivers", "kids", "days", "from", "until"],
+      "required": [
+        "id",
+        "caregivers",
+        "kids",
+        "days",
+        "from",
+        "until"
+      ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "title": { "type": "string", "description": "Shown on the kids' lanes. Default: \"With <caregivers>\"." },
-        "caregivers": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/personId" } },
-        "kids": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/personId" } },
-        "days": { "$ref": "#/$defs/days" },
-        "from": { "$ref": "#/$defs/time" },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "description": "Shown on the kids' lanes. Default: \"With <caregivers>\"."
+        },
+        "caregivers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/personId"
+          }
+        },
+        "kids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/personId"
+          }
+        },
+        "days": {
+          "$ref": "#/$defs/days"
+        },
+        "from": {
+          "$ref": "#/$defs/time"
+        },
         "until": {
           "description": "\"pickupLoop\" (each kid until the loop stop that collects them) or a time.",
-          "oneOf": [{ "const": "pickupLoop" }, { "$ref": "#/$defs/time" }]
+          "oneOf": [
+            {
+              "const": "pickupLoop"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
         }
       }
     },
     "pickupLoop": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["driver", "days", "startsAt", "stops"],
+      "required": [
+        "driver",
+        "days",
+        "startsAt",
+        "stops"
+      ],
       "properties": {
-        "title": { "type": "string" },
-        "driver": { "$ref": "#/$defs/personId" },
-        "days": { "$ref": "#/$defs/days" },
+        "title": {
+          "type": "string"
+        },
+        "driver": {
+          "$ref": "#/$defs/personId"
+        },
+        "days": {
+          "$ref": "#/$defs/days"
+        },
         "startsAt": {
           "type": "string",
           "description": "A block's end, like \"school.end\" (early releases included), or a time.",
           "pattern": "^(.+\\.end|([01]?[0-9]|2[0-3]):[0-5][0-9])$"
         },
-        "fallbackStart": { "$ref": "#/$defs/time", "description": "The start on days the startsAt block doesn't run." },
-        "minutesBetweenStops": { "type": "integer", "minimum": 0 },
-        "minutesToHome": { "type": "integer", "minimum": 0 },
+        "fallbackStart": {
+          "$ref": "#/$defs/time",
+          "description": "The start on days the startsAt block doesn't run."
+        },
+        "minutesBetweenStops": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minutesToHome": {
+          "type": "integer",
+          "minimum": 0
+        },
         "stops": {
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["place", "collect"],
+            "required": [
+              "place",
+              "collect"
+            ],
             "properties": {
-              "place": { "type": "string" },
-              "collect": { "type": "array", "items": { "$ref": "#/$defs/personId" } },
-              "onlyWhen": { "type": "string", "description": "A block id: the stop happens only on days that block runs." }
+              "place": {
+                "type": "string"
+              },
+              "collect": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/personId"
+                }
+              },
+              "onlyWhen": {
+                "type": "string",
+                "description": "A block id: the stop happens only on days that block runs."
+              }
             }
           }
         }
@@ -246,23 +561,226 @@
     "need": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["who", "items"],
-      "anyOf": [{ "required": ["days"] }, { "required": ["onDaysOf"] }],
+      "required": [
+        "who",
+        "items"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "days"
+          ]
+        },
+        {
+          "required": [
+            "onDaysOf"
+          ]
+        }
+      ],
       "properties": {
-        "who": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/personId" } },
-        "items": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-        "days": { "$ref": "#/$defs/days" },
-        "onDaysOf": { "type": "string", "description": "A block id: on days that block runs." }
+        "who": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/personId"
+          }
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "days": {
+          "$ref": "#/$defs/days"
+        },
+        "onDaysOf": {
+          "type": "string",
+          "description": "A block id: on days that block runs."
+        }
       }
     },
     "checkIn": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "at"],
+      "required": [
+        "kind",
+        "at"
+      ],
       "properties": {
-        "kind": { "enum": ["morning", "midday", "afternoon"] },
-        "at": { "$ref": "#/$defs/time" },
-        "timeSensitive": { "type": "boolean", "description": "Breaks through Focus." }
+        "kind": {
+          "enum": [
+            "morning",
+            "midday",
+            "afternoon"
+          ]
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "timeSensitive": {
+          "type": "boolean",
+          "description": "Breaks through Focus."
+        }
+      }
+    },
+    "reminderList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The list's name as Reminders shows it."
+        },
+        "defaultOwner": {
+          "$ref": "#/$defs/personId",
+          "description": "Who gets reminders that name nobody."
+        }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "op",
+        "value"
+      ],
+      "properties": {
+        "field": {
+          "enum": [
+            "title",
+            "calendar",
+            "location",
+            "notes"
+          ]
+        },
+        "op": {
+          "enum": [
+            "contains",
+            "doesNotContain",
+            "is",
+            "startsWith",
+            "endsWith"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Compared ignoring case and accents."
+        }
+      }
+    },
+    "action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "assignTo"
+          ],
+          "properties": {
+            "assignTo": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/personId"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "alsoInclude"
+          ],
+          "properties": {
+            "alsoInclude": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/personId"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "hide"
+          ],
+          "properties": {
+            "hide": {
+              "const": true
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "importance"
+          ],
+          "properties": {
+            "importance": {
+              "$ref": "#/$defs/importance"
+            }
+          }
+        }
+      ],
+      "description": "Exactly one of: assignTo (replaces the owner), alsoInclude (adds people), hide, importance."
+    },
+    "assignmentRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "conditions",
+        "actions"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "match": {
+          "enum": [
+            "all",
+            "any"
+          ]
+        },
+        "conditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/condition"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "stop": {
+          "type": "boolean",
+          "description": "Skip later rules when this one matches (default true)."
+        }
       }
     }
   }

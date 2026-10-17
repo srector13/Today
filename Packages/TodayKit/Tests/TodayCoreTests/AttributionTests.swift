@@ -9,7 +9,7 @@ struct AttributionTests {
     var kates: CalendarRule { Fixture.rules.calendars.first { $0.title == "Kate" }! }
 
     @Test(arguments: [
-        // No name: the shared calendar's default owner (Grandpa).
+        // No name: the shared calendar's default owner (Jess, the father-in-law).
         ("Dentist", ["grandpa"]),
         ("Lunch at the club", ["grandpa"]),
         // A name wins, however it's attached.
@@ -75,14 +75,14 @@ struct AttributionTests {
             Fixture.event("Dentist", "2026-10-20", "10:00", "11:00"),
             Fixture.event("Twins checkup", "2026-10-20", "16:30", "17:00"),
         ])
-        #expect(plan.lane("Grandpa")?.items.contains { $0.title == "Dentist" } == true)
+        #expect(plan.lane("Jess")?.items.contains { $0.title == "Dentist" } == true)
         #expect(plan.lane("Grandma")?.items.contains { $0.title == "Dentist" } == false)
         // Both twins, one merged item on their shared lane.
         let twins = try #require(plan.lane("Twins"))
         let checkups = twins.items.filter { $0.title == "Twins checkup" }
         #expect(checkups.count == 1)
         #expect(checkups.first?.people == ["twinA", "twinB"])
-        #expect(plan.lane("Grandpa")?.items.contains { $0.title == "Twins checkup" } == false)
+        #expect(plan.lane("Jess")?.items.contains { $0.title == "Twins checkup" } == false)
     }
 
     @Test func calendarTitlesMatchIgnoringCase() {

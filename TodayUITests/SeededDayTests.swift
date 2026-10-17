@@ -4,6 +4,7 @@ import XCTest
 /// keeps a screenshot of each as a named attachment in the result bundle.
 /// CI exports those attachments to the ci-screenshots branch.
 final class SeededDayTests: XCTestCase {
+    static let milestone = "M2"
     static let seededDays = ["2026-10-20", "2026-10-21", "2026-10-24"]
 
     override func setUpWithError() throws {
@@ -18,16 +19,20 @@ final class SeededDayTests: XCTestCase {
             app.launch()
             let plan = app.staticTexts["plan.text"]
             XCTAssertTrue(plan.waitForExistence(timeout: 60), "\(day): the plan text never appeared")
-            if day == "2026-10-24" {
-                XCTAssertTrue(plan.label.contains("weekend: no school, no pickup loop"), day)
-            } else {
+            switch day {
+            case "2026-10-20":
                 XCTAssertTrue(plan.label.contains("Pickup loop"), day)
-            }
-            if day == "2026-10-20" {
                 // The wife's calendar is missing on this seed: no data, never free.
                 XCTAssertTrue(plan.label.contains("NO DATA"), day)
+                XCTAssertTrue(plan.label.contains("rule \"SERC → Jess\""), day)
+                XCTAssertTrue(plan.label.contains("Hidden by rules"), day)
+            case "2026-10-21":
+                XCTAssertTrue(plan.label.contains("SERC board call  [Sam: rule \"SERC → Jess\"]"), day)
+            default:
+                XCTAssertTrue(plan.label.contains("weekend: no school, no pickup loop"), day)
+                XCTAssertTrue(plan.label.contains("Aunt Jo"), day)
             }
-            keepScreenshot(of: app, named: "M1-seed-\(day)")
+            keepScreenshot(of: app, named: "\(Self.milestone)-seed-\(day)")
             app.terminate()
         }
     }
@@ -36,9 +41,15 @@ final class SeededDayTests: XCTestCase {
     func testBundledRulesLoad() throws {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.staticTexts["plan.text"].waitForExistence(timeout: 60))
+        let plan = app.staticTexts["plan.text"]
+        XCTAssertTrue(plan.waitForExistence(timeout: 60))
+        let loaded = expectation(for: NSPredicate(format: "label CONTAINS %@", "Rules incomplete"), evaluatedWith: plan)
+        wait(for: [loaded], timeout: 60)
         XCTAssertFalse(app.staticTexts["rules.error"].exists)
-        keepScreenshot(of: app, named: "M1-bundled-rules")
+        // A fresh install asks nothing until the button is tapped.
+        XCTAssertTrue(app.buttons["connect.calendars"].exists)
+        XCTAssertTrue(plan.label.contains("Calendars not connected yet"))
+        keepScreenshot(of: app, named: "\(Self.milestone)-bundled-rules")
     }
 
     @MainActor

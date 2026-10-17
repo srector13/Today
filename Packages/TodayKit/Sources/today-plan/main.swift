@@ -7,6 +7,9 @@ import TodayCore
 //   swift run today-plan 2026-11-26           a sample-household day
 //   swift run today-plan --rules ../../Rules/household.json 2026-10-20
 //                                             a real rules file (no calendar events)
+//   swift run today-plan --rules ../../Rules/household.json --format
+//                                             the file as the app saves it
+//                                             (also upgrades a version 1 file)
 
 var arguments = Array(CommandLine.arguments.dropFirst())
 var rulesPath: String?
@@ -14,6 +17,8 @@ if let index = arguments.firstIndex(of: "--rules"), index + 1 < arguments.count 
     rulesPath = arguments[index + 1]
     arguments.removeSubrange(index...(index + 1))
 }
+let formatOnly = arguments.contains("--format")
+arguments.removeAll { $0 == "--format" }
 
 let rules: HouseholdRules
 if let rulesPath {
@@ -29,6 +34,11 @@ if let rulesPath {
     }
 } else {
     rules = SampleHousehold.rules
+}
+
+if formatOnly {
+    print(RulesWriter.text(rules), terminator: "")
+    exit(0)
 }
 
 let dates: [LocalDate]

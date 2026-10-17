@@ -9,7 +9,7 @@ struct PickupLoopTests {
         let loop = try #require(plan.pickupLoop)
         #expect(loop.driver == "dad")
         #expect(loop.start == Fixture.time("15:30"))
-        #expect(loop.stops.map(\.place) == ["School", "Grandma & Grandpa's"])
+        #expect(loop.stops.map(\.place) == ["School", "Grandparents'"])
         #expect(loop.stops.map(\.time) == [Fixture.time("15:30"), Fixture.time("15:45")])
         #expect(loop.stops.map(\.kids) == [["kinder"], ["pre", "twinA", "twinB"]])
         #expect(loop.end == Fixture.time("16:00"))
@@ -21,7 +21,7 @@ struct PickupLoopTests {
         let item = try #require(plan.items.first { $0.id == "loop" })
         #expect(item.people == ["dad"])
         #expect(item.importance == .high)
-        #expect(item.detail == "School 3:30 → Grandma & Grandpa's 3:45 → home ~4:00")
+        #expect(item.detail == "School 3:30 → Grandparents' 3:45 → home ~4:00")
         // A school-day afternoon is never free: Dad has work plus the loop.
         #expect(plan.schedule(for: "dad") == ["08:30–17:00 Work", "15:30–16:00 Pickup loop"])
     }
@@ -38,7 +38,7 @@ struct PickupLoopTests {
         let loop = try #require(Fixture.plan("2026-10-23").pickupLoop)
         #expect(loop.usedFallbackStart)
         #expect(loop.start == Fixture.time("17:00"))
-        #expect(loop.stops.map(\.place) == ["Grandma & Grandpa's"])
+        #expect(loop.stops.map(\.place) == ["Grandparents'"])
         #expect(loop.stops.first?.time == Fixture.time("17:00"))
         #expect(loop.end == Fixture.time("17:15"))
     }
@@ -90,9 +90,9 @@ struct CoverageTests {
     @Test func preschoolDaySplitsHerCareAroundPreschool() {
         let plan = Fixture.plan("2026-10-20")
         #expect(plan.schedule(for: "pre") == [
-            "07:45–09:00 With Grandma & Grandpa",
+            "07:45–09:00 With the grandparents",
             "09:00–11:30 Preschool",
-            "11:30–15:45 With Grandma & Grandpa",
+            "11:30–15:45 With the grandparents",
             "15:45–16:00 Pickup → home",
         ])
     }
@@ -100,7 +100,7 @@ struct CoverageTests {
     @Test func noPreschoolMeansAllDayWithTheGrandparents() {
         let plan = Fixture.plan("2026-10-21")
         #expect(plan.schedule(for: "pre") == [
-            "07:45–15:45 With Grandma & Grandpa",
+            "07:45–15:45 With the grandparents",
             "15:45–16:00 Pickup → home",
         ])
     }
@@ -112,7 +112,7 @@ struct CoverageTests {
         let care = twins.items.filter { $0.kind == .care }
         #expect(care.count == 1)
         #expect(care.first?.people == ["twinA", "twinB"])
-        #expect(plan.schedule(for: "twinB").first == "07:45–15:45 With Grandma & Grandpa")
+        #expect(plan.schedule(for: "twinB").first == "07:45–15:45 With the grandparents")
     }
 
     @Test func grandparentsSeeWhoTheyAreWatching() {
@@ -129,7 +129,7 @@ struct CoverageTests {
 
     @Test func noSchoolDayCareRunsToTheFallbackLoop() {
         let plan = Fixture.plan("2026-10-23")
-        #expect(plan.schedule(for: "twinA").first == "07:45–17:00 With Grandma & Grandpa")
+        #expect(plan.schedule(for: "twinA").first == "07:45–17:00 With the grandparents")
     }
 
     @Test func noCareOnWeekends() {
@@ -140,7 +140,7 @@ struct CoverageTests {
     @Test func grandparentAppointmentDuringCareAlerts() {
         let plan = Fixture.plan("2026-10-20", events: [Fixture.event("Dentist", "2026-10-20", "10:00", "11:00")])
         #expect(plan.alerts(.careConflict).map(\.message) == [
-            "Grandpa: Dentist 10:00–11:00 while watching the kids (7:45–3:45).",
+            "Jess: Dentist 10:00–11:00 while watching the kids (7:45–3:45).",
         ])
         #expect(plan.alerts(.careConflict).first?.people == ["grandpa"])
     }
@@ -167,7 +167,7 @@ struct LaneAndNeedsTests {
         let plan = Fixture.plan("2026-10-21")
         #expect(plan.laneGroups.map(\.group) == [.parents, .kids, .grandparents])
         #expect(plan.laneGroups.map { $0.lanes.map(\.label) } == [
-            ["Sam", "Kate"], ["Emma", "Nora", "Twins"], ["Grandpa", "Grandma"],
+            ["Sam", "Kate"], ["Emma", "Nora", "Twins"], ["Jess", "Grandma"],
         ])
     }
 
@@ -178,7 +178,7 @@ struct LaneAndNeedsTests {
         #expect(plan.missingCalendars == ["Kate"])
         // The other lanes are still known.
         #expect(plan.lane("Sam")?.data == .known)
-        #expect(plan.lane("Grandpa")?.data == .known)
+        #expect(plan.lane("Jess")?.data == .known)
     }
 
     @Test func presentButEmptyCalendarIsKnown() {
