@@ -1,0 +1,198 @@
+# iOS Gate
+#
+# Ported from MyTeams' ios-gate.yml: boot the simulator early, build, then run
+# the scheme's tests (TodayTests, TodayUITests, and the package's
+# TodayCoreTests on the iOS runtime) with code signing disabled.
+#
+# Added for Today: the UI tests' named screenshots are exported from the
+# result bundle and pushed to the ci-screenshots branch under the source
+# branch's name, so each milestone's screenshots can be reviewed from git.
+#
+# Runs on the xcode-27 image (Xcode 27, iOS 27 SDK; GitHub public preview),
+# the move MyTeams' TODO(GlassUI 0.1) was waiting for. The Diagnostics step
+# prints the versions it actually got.
+#
+# macOS minutes cost more than Linux on a private repo, so this runs on main
+# and claude/** branches and on demand; Core Tests (Linux) runs everywhere.
+
+name: iOS Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+    paths-ignore:
+      - '**.md'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-gate:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Diagnostics
+        continue-on-error: true
+        run: |
+          xcodebuild -version
+          sw_vers
+          xcodebuild -showsdks | grep -i -E 'iphone|ios' || true
+          xcrun simctl list runtimes
+          xcrun simctl list devices available
+
+      # Boot the test simulator now, so the work iOS does after a fresh boot
+      # finishes during the build rather than under the UI tests (MyTeams
+      # t_2cab5bf3: a late boot left XCUITest waiting minutes for a launch).
+      - name: Boot simulator
+        continue-on-error: true
+        shell: bash
+        run: |
+          DEST=$(xcrun simctl list devices available | grep -Eo 'iPhone [^(]+' | head -1 | sed 's/[[:space:]]*$//') || true
+          [ -z "$DEST" ] && DEST="iPhone 17"
+          # The device "name=$DEST,OS=latest" names: the newest iOS runtime's.
+          UDID=$(xcrun simctl list devices available -j | DEST="$DEST" python3 -c '
+          import json, os, re, sys
+          best = None
+          for runtime, devices in json.load(sys.stdin)["devices"].items():
+              match = re.search(r"iOS-(\d+)-(\d+)(?:-(\d+))?$", runtime)
+              if not match:
+                  continue
+              version = tuple(int(part or 0) for part in match.groups())
+              for device in devices:
+                  if device["name"] == os.environ["DEST"] and (best is None or version > best[0]):
+                      best = (version, device["udid"])
+          print(best[1] if best else "")
+          ')
+          echo "Booting $DEST ($UDID)"
+          [ -n "$UDID" ] || exit 0
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          echo "SIM_NAME=$DEST" >> "$GITHUB_ENV"
+
+      - name: Resolve destination
+        shell: bash
+        run: |
+          if [ -n "${SIM_UDID:-}" ]; then
+            echo "DESTINATION=platform=iOS Simulator,id=$SIM_UDID" >> "$GITHUB_ENV"
+          else
+            echo "DESTINATION=platform=iOS Simulator,name=iPhone 17,OS=latest" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build for testing
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project Today.xcodeproj -scheme Today \
+            -destination "$DESTINATION" \
+            -derivedDataPath dd \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build-for-testing.log
+
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project Today.xcodeproj -scheme Today \
+            -destination "$DESTINATION" \
+            -derivedDataPath dd \
+            -resultBundlePath TestResults.xcresult \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee test.log
+
+      - name: Export screenshots
+        if: always()
+        id: shots
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d TestResults.xcresult ]; then
+            echo "No result bundle; nothing to export."
+            exit 0
+          fi
+          rm -rf attachments screenshots && mkdir -p attachments screenshots
+          xcrun xcresulttool export attachments --path TestResults.xcresult --output-path attachments
+          # Name each PNG by the attachment's own name (e.g. M1-seed-2026-10-20.png).
+          python3 - attachments screenshots <<'PY'
+          import json, os, re, shutil, sys
+          src, dst = sys.argv[1], sys.argv[2]
+          manifest = json.load(open(os.path.join(src, "manifest.json")))
+          found = []
+          def walk(node):
+              if isinstance(node, dict):
+                  exported = node.get("exportedFileName")
+                  if exported:
+                      found.append((exported, node.get("suggestedHumanReadableName") or exported))
+                  for value in node.values():
+                      walk(value)
+              elif isinstance(node, list):
+                  for value in node:
+                      walk(value)
+          walk(manifest)
+          for exported, suggested in found:
+              base, ext = os.path.splitext(suggested)
+              # Xcode suffixes "_<n>_<UUID>"; keep the name the test gave.
+              base = re.sub(r"_\d+_[0-9A-Fa-f-]{36}$", "", base)
+              target = os.path.join(dst, base + (ext or ".png"))
+              shutil.copy(os.path.join(src, exported), target)
+              print("exported", os.path.basename(target))
+          PY
+          echo "count=$(ls screenshots | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload screenshots and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-gate-${{ github.run_number }}
+          path: |
+            screenshots
+            TestResults.xcresult
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish screenshots to ci-screenshots
+        if: always() && steps.shots.outputs.count != '' && steps.shots.outputs.count != '0'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          WORK="${RUNNER_TEMP}/ci-screenshots"
+          rm -rf "$WORK"
+          if git ls-remote --exit-code --heads "$REMOTE" ci-screenshots > /dev/null; then
+            git clone --quiet --depth 1 --branch ci-screenshots "$REMOTE" "$WORK"
+          else
+            git init --quiet -b ci-screenshots "$WORK"
+            git -C "$WORK" remote add origin "$REMOTE"
+          fi
+          DIR="${WORK}/${GITHUB_REF_NAME}"
+          rm -rf "$DIR" && mkdir -p "$DIR"
+          cp screenshots/* "$DIR/"
+          printf 'commit %s\nrun %s\nsimulator %s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "${SIM_NAME:-unknown}" > "$DIR/SOURCE.txt"
+          cd "$WORK"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit --quiet -m "Screenshots: ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7} (run ${GITHUB_RUN_NUMBER})"
+          git push --quiet origin HEAD:ci-screenshots
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-gate-logs-${{ github.run_number }}
+          path: ${{ github.workspace }}/*.log
+          retention-days: 7

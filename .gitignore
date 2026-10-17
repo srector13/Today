@@ -1,0 +1,21 @@
+# Xcode
+build/
+dd/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcresult
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/TodayKit/.build/
+Packages/TodayKit/.swiftpm/
+
+# macOS
+.DS_Store
+*.swp
+*~

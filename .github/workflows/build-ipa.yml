@@ -1,0 +1,313 @@
+# Build unsigned IPA (manual)
+#
+# Ported from MyTeams' build-ipa.yml, unsigned (Feather) route: builds
+# Release with code signing disabled, checks the widget extension is
+# embedded, zips Payload/Today.app into an unsigned .ipa for re-signing on
+# the device with Feather, and publishes a GitHub Release tagged v1.0.N
+# (N = highest existing v1.0.* tag + 1, starting at v1.0.1) on the built
+# commit, with the .ipa as its single asset.
+#
+# The repository is private (the rules file holds the household's names and
+# schedule), so release assets need a GitHub login: download the .ipa in the
+# GitHub app or Safari while signed in, then open it in Feather.
+#
+# For WeatherKit (M3), the App Group (app <-> widget) and Time Sensitive
+# notifications (M5) to work after re-signing, the profile Feather signs with
+# must be for App IDs that carry those capabilities:
+#   PolarReailty.Today, PolarReailty.Today.widgets, group.PolarReailty.Today
+#
+# The signed (ad-hoc / development) job from MyTeams can be ported the same
+# way once profiles for those App IDs exist as repository secrets.
+
+name: Build unsigned IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SCHEME: Today
+  APP_TARGET: Today
+  WIDGET_TARGET: TodayWidgets
+
+jobs:
+  build-ipa-unsigned:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    # Creating the release (and its tag) needs write.
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve run metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnostics
+        continue-on-error: true
+        run: |
+          xcodebuild -version
+          sw_vers
+
+      - name: Build (code signing disabled)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # -derivedDataPath pins the product to
+          # ./dd/Build/Products/Release-iphoneos/Today.app.
+          xcodebuild build \
+            -project Today.xcodeproj -scheme "$SCHEME" -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ./dd \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            2>&1 | tee build.log
+
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          # No -exportArchive: it requires signing. Zip Payload/ by hand.
+          APP="dd/Build/Products/Release-iphoneos/${APP_TARGET}.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::Build produced no ${APP}"
+            ls -la dd/Build/Products/Release-iphoneos || true
+            exit 1
+          fi
+          rm -rf Payload output
+          mkdir -p Payload output
+          cp -R "$APP" Payload/
+          PLUGINS="Payload/${APP_TARGET}.app/PlugIns"
+          if [ ! -d "${PLUGINS}/${WIDGET_TARGET}.appex" ]; then
+            echo "::error::${PLUGINS}/${WIDGET_TARGET}.appex is missing. The widget extension was not embedded in the Release build."
+            ls -la "$PLUGINS" || true
+            exit 1
+          fi
+          echo "PASS: ${PLUGINS}/${WIDGET_TARGET}.appex is embedded"
+          if [ ! -f "Payload/${APP_TARGET}.app/household.json" ] || [ ! -f "${PLUGINS}/${WIDGET_TARGET}.appex/household.json" ]; then
+            echo "::error::household.json must ship in both the app and the widget extension."
+            exit 1
+          fi
+          echo "PASS: household.json ships in the app and the widget"
+          zip -qry output/Today-unsigned.ipa Payload
+          ls -la output
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: today-ipa-unsigned-${{ github.run_number }}-${{ steps.meta.outputs.short_sha }}
+          path: output/*.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Compute release tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The checkout is shallow and tagless; fetch every tag first.
+          git fetch --tags --force --quiet origin
+          LAST="$(git tag -l 'v1.0.*' | sed -n 's/^v1\.0\.\([0-9][0-9]*\)$/\1/p' | sort -n | tail -n 1)"
+          TAG="v1.0.$(( ${LAST:-0} + 1 ))"
+          echo "Highest existing v1.0.* build: ${LAST:-none}; this build: ${TAG}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+        run: |
+          set -Eeuo pipefail
+          REPO_API="repos/${GITHUB_REPOSITORY}"
+          STEP="preparing ${TAG}"
+          # Report the failing phase. Never delete the draft here: a re-run on
+          # the same number adopts it below instead of tripping over it.
+          trap 'echo "::error::Publishing ${TAG} failed while ${STEP} (exit $?). Any draft for ${TAG} is left in place and is adopted by the next run."' ERR
+
+          # An .ipa is already a zip of Payload/, so publish the packaged file
+          # as-is under the release name; no second zip.
+          ASSET_DIR="${RUNNER_TEMP}/release"
+          ASSET_NAME="Today-${TAG}-unsigned.ipa"
+          rm -rf "$ASSET_DIR" && mkdir -p "$ASSET_DIR"
+          cp output/Today-unsigned.ipa "${ASSET_DIR}/${ASSET_NAME}"
+          # No grep -q: exiting early would SIGPIPE unzip and trip pipefail.
+          if ! unzip -Z1 "${ASSET_DIR}/${ASSET_NAME}" | grep "^Payload/${APP_TARGET}\.app/" > /dev/null; then
+            echo "::error::${ASSET_NAME} does not hold Payload/${APP_TARGET}.app at its root"
+            exit 1
+          fi
+
+          # Every release whose tag_name is TAG, drafts included, as
+          # "<id> <draft>". A draft has no git tag until it is published, so
+          # neither the tag ref nor `gh release view <tag>` can be relied on to
+          # find it; list the releases (drafts are visible with contents: write).
+          list_releases() {
+            gh api --paginate "${REPO_API}/releases?per_page=100" \
+              --jq ".[] | select(.tag_name == \"${TAG}\") | \"\(.id) \(.draft)\""
+          }
+          # Oldest draft id among list_releases output on stdin (empty if none).
+          oldest_draft() {
+            awk '$2 == "true" { print $1 }' | sort -n | head -n 1
+          }
+
+          # Re-run / concurrent-run guard: an existing git tag or PUBLISHED
+          # release means this number is taken. Fail loudly rather than skip or
+          # overwrite (re-run the workflow to get the next number). A leftover
+          # DRAFT is not a conflict; it is adopted below.
+          STEP="checking whether ${TAG} is already published"
+          LS_RC=0
+          git ls-remote --exit-code --tags origin "refs/tags/${TAG}" > /dev/null || LS_RC=$?
+          case "$LS_RC" in
+            0) echo "::error::Git tag ${TAG} already exists (another run published it first). Re-run the workflow to take the next build number."; exit 1 ;;
+            2) ;; # no such tag
+            *) echo "::error::git ls-remote failed (exit ${LS_RC}) while checking for tag ${TAG}"; exit 1 ;;
+          esac
+          RELEASES="$(list_releases)"
+          if awk '$2 == "false" { found = 1 } END { exit !found }' <<< "$RELEASES"; then
+            echo "::error::A published release ${TAG} already exists (another run published it first). Re-run the workflow to take the next build number."
+            exit 1
+          fi
+
+          # Create or adopt the draft. Drafts keep the release from appearing
+          # without its asset; the tag is created on the built commit when it
+          # is published. A new draft's id comes from the create response
+          # itself, not from a follow-up list query.
+          #
+          # GitHub resets a draft's tag_name to an "untagged-<hex>" placeholder
+          # on ANY PATCH that omits tag_name (even a name- or
+          # target_commitish-only one), and publishing then creates that
+          # placeholder tag instead of TAG. So: never PATCH a draft without
+          # tag_name, and do not PATCH a draft we just created at all (the
+          # create already set every field).
+          TITLE="Today build ${TAG} (sha ${SHORT_SHA})"
+          NOTES="Unsigned build of ${GITHUB_SHA} (run ${GITHUB_RUN_NUMBER}) for re-signing in Feather."
+          ADOPTED=false
+          RELEASE_ID="$(oldest_draft <<< "$RELEASES")"
+          if [ -n "$RELEASE_ID" ]; then
+            ADOPTED=true
+            echo "Adopting existing draft release ${RELEASE_ID} for ${TAG}"
+          else
+            STEP="creating the draft release for ${TAG}"
+            CREATE_RC=0
+            CREATE_OUT="$(gh api -X POST "${REPO_API}/releases" \
+              -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" \
+              -f name="$TITLE" -f body="$NOTES" -F draft=true --jq '.id' 2>&1)" || CREATE_RC=$?
+            if [ "$CREATE_RC" -eq 0 ] && [[ "$CREATE_OUT" =~ ^[0-9]+$ ]]; then
+              RELEASE_ID="$CREATE_OUT"
+              echo "Created draft release ${RELEASE_ID} for ${TAG}"
+            elif grep -Eqi 'already[ _]exists' <<< "$CREATE_OUT"; then
+              # Another run created it between our list and create: adopt it.
+              # Retry because the list can briefly lag a fresh create.
+              STEP="adopting the draft another run created for ${TAG}"
+              echo "Release ${TAG} was created concurrently (${CREATE_OUT}); adopting its draft"
+              for attempt in 1 2 3 4 5; do
+                RELEASE_ID="$(list_releases | oldest_draft)"
+                [ -n "$RELEASE_ID" ] && break
+                echo "Draft for ${TAG} not listed yet (attempt ${attempt}/5)"
+                sleep $(( attempt * 2 ))
+              done
+              if [ -z "$RELEASE_ID" ]; then
+                echo "::error::Creating ${TAG} reported 'already exists' but no draft with that tag was found (another run may have published it). Re-run the workflow to take the next build number."
+                exit 1
+              fi
+              ADOPTED=true
+              echo "Adopting draft release ${RELEASE_ID} for ${TAG}"
+            else
+              echo "::error::Creating the draft release for ${TAG} failed (exit ${CREATE_RC}): ${CREATE_OUT}"
+              exit 1
+            fi
+          fi
+
+          # Adopted drafts only: point them at this build in a single PATCH
+          # that always carries tag_name (see above).
+          if [ "$ADOPTED" = true ]; then
+            STEP="updating adopted draft ${RELEASE_ID}"
+            gh api -X PATCH "${REPO_API}/releases/${RELEASE_ID}" \
+              -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" \
+              -f name="$TITLE" -f body="$NOTES" > /dev/null
+          fi
+
+          # Drop every existing asset (e.g. from an earlier failed run) so the
+          # release ends up with exactly the one .ipa uploaded below.
+          STEP="removing stale assets from draft ${RELEASE_ID}"
+          OLD_ASSETS="$(gh api --paginate "${REPO_API}/releases/${RELEASE_ID}/assets?per_page=100" --jq '.[] | "\(.id) \(.name)"')"
+          while read -r asset_id asset_name; do
+            [ -n "$asset_id" ] || continue
+            echo "Deleting stale asset ${asset_name} (${asset_id})"
+            gh api -X DELETE "${REPO_API}/releases/assets/${asset_id}" > /dev/null
+          done <<< "$OLD_ASSETS"
+
+          # Upload through the REST API so the content type is exactly
+          # application/octet-stream (gh release upload guesses it from the
+          # extension).
+          STEP="uploading ${ASSET_NAME} to draft ${RELEASE_ID}"
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@${ASSET_DIR}/${ASSET_NAME}" \
+            "https://uploads.github.com/${REPO_API}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME}" \
+            > /dev/null
+
+          STEP="verifying the assets of draft ${RELEASE_ID}"
+          ASSETS="$(gh api --paginate "${REPO_API}/releases/${RELEASE_ID}/assets?per_page=100" --jq '.[] | "\(.name) \(.content_type)"')"
+          if [ "$ASSETS" != "${ASSET_NAME} application/octet-stream" ]; then
+            echo "::error::Expected exactly one asset '${ASSET_NAME} application/octet-stream' on draft ${RELEASE_ID}, got: ${ASSETS}"
+            exit 1
+          fi
+
+          # Pre-publish guard: the release must still be a draft tagged TAG.
+          # Restore the tag (PATCH with tag_name) if it was reset to an
+          # untagged-* placeholder; anything else is fatal.
+          STEP="checking draft ${RELEASE_ID} before publishing"
+          release_state() {
+            gh api "${REPO_API}/releases/${RELEASE_ID}" --jq '"\(.draft) \(.tag_name)"'
+          }
+          read -r CUR_DRAFT CUR_TAG <<< "$(release_state)"
+          if [ "$CUR_DRAFT" != "true" ]; then
+            echo "::error::Release ${RELEASE_ID} (${CUR_TAG}) is no longer a draft: another run published it first. Re-run the workflow to take the next build number."
+            exit 1
+          fi
+          if [ "$CUR_TAG" != "$TAG" ]; then
+            if [[ "$CUR_TAG" != untagged-* ]]; then
+              echo "::error::Draft ${RELEASE_ID} is tagged '${CUR_TAG}', expected '${TAG}'"
+              exit 1
+            fi
+            echo "Draft ${RELEASE_ID} lost its tag (${CUR_TAG}); restoring ${TAG}"
+            STEP="restoring tag ${TAG} on draft ${RELEASE_ID}"
+            gh api -X PATCH "${REPO_API}/releases/${RELEASE_ID}" -f tag_name="$TAG" > /dev/null
+            read -r CUR_DRAFT CUR_TAG <<< "$(release_state)"
+            if [ "$CUR_DRAFT" != "true" ] || [ "$CUR_TAG" != "$TAG" ]; then
+              echo "::error::Could not restore tag ${TAG} on draft ${RELEASE_ID} (draft=${CUR_DRAFT}, tag=${CUR_TAG}); not publishing"
+              exit 1
+            fi
+          fi
+
+          # draft=false alone leaves tag_name untouched.
+          STEP="publishing draft ${RELEASE_ID}"
+          PUBLISHED="$(gh api -X PATCH "${REPO_API}/releases/${RELEASE_ID}" -F draft=false --jq '"\(.draft) \(.tag_name) \(.html_url)"')"
+          read -r IS_DRAFT PUB_TAG PUB_URL <<< "$PUBLISHED"
+          if [ "$IS_DRAFT" != "false" ] || [ "$PUB_TAG" != "$TAG" ]; then
+            echo "::error::Release ${RELEASE_ID} did not publish as ${TAG} (draft=${IS_DRAFT}, tag=${PUB_TAG})"
+            exit 1
+          fi
+          trap - ERR
+          echo "Published ${TAG}: ${PUB_URL}"
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-ipa-unsigned-logs-${{ github.run_number }}
+          path: |
+            build.log
+          if-no-files-found: warn
+          retention-days: 7

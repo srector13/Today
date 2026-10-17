@@ -1,0 +1,43 @@
+Saturday, October 24, 2026  (America/Chicago)
+
+Schedule     weekend: no school, no pickup loop
+
+Alerts
+  (none)
+
+Needs
+  (none)
+
+            6a  7a  8a  9a  10a 11a 12p 1p  2p  3p  4p  5p  6p  7p  8p
+Us
+  Sam       ··········WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW················
+  Kate      ········EEEEEE··············································
+Kids
+  Emma      ················EEEEEEEE····································
+  Nora      ················EEEEEEEE····································
+  Twins     ····························································
+Grandparents
+  Grandpa   ··························EEEE······························
+  Grandma   ····························································
+  P pickupLoop · E appointment · A activity · S school · C care · W work · · nothing · ? no data
+
+Us
+  Sam
+    08:30–17:00  Work
+  Kate
+    08:00–09:30  Farmers market  [Kate: calendarOwner]
+Kids
+  Emma
+    10:00–12:00  Birthday party — Emma & Nora  [Family: namedInTitle]  (with Nora)
+  Nora
+    10:00–12:00  Birthday party — Emma & Nora  [Family: namedInTitle]  (with Emma)
+  Twins
+    (nothing scheduled)
+Grandparents
+  Grandpa
+    all day      Trip to Dallas: Grandma & Grandpa  [Family: namedInTitle]  (with Grandma)
+    12:30–13:30  Lunch at the club  [Family: defaultOwner]
+  Grandma
+    all day      Trip to Dallas: Grandma & Grandpa  [Family: namedInTitle]  (with Grandpa)
+
+Not in the rules (ignored): US Holidays

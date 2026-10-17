@@ -1,0 +1,63 @@
+# Core Tests
+#
+# The rules engine (Packages/TodayKit, TodayCore) on Linux: fast, cheap, and
+# on every push. TodayCore is plain Swift + Foundation, so everything about
+# the household rules is tested here before any macOS minutes are spent.
+#
+# Also checks Rules/household.json (and the sample household) against
+# Rules/household.schema.json, so the schema editors use and the app's own
+# validator never drift apart.
+
+name: Core Tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - '**'
+      - '!ci-screenshots'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  core-tests:
+    runs-on: ubuntu-latest
+    # The official image ships tzdata, which Foundation needs for America/Chicago.
+    container: swift:6.4-noble
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Test TodayCore
+        working-directory: Packages/TodayKit
+        run: swift test
+
+      - name: Print the seeded days
+        working-directory: Packages/TodayKit
+        run: swift run today-plan
+
+  rules-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate rules against the schema
+        run: |
+          pip install --quiet jsonschema
+          python scripts/check_rules_schema.py \
+            Rules/household.schema.json \
+            Rules/household.json \
+            Packages/TodayKit/Sources/TodayCore/Samples/SampleHousehold.swift

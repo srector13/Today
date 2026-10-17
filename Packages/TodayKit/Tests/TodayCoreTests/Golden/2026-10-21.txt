@@ -1,0 +1,51 @@
+Wednesday, October 21, 2026  (America/Chicago)
+
+School       in session 8:15–3:30 · Emma
+Pickup loop  3:30 School (Emma) → 3:45 Grandma & Grandpa's (Nora & Twins) → home ~4:00
+
+Alerts
+  ! [careConflict] Grandma: Nana's book club 1:00–2:30 while watching the kids (7:45–3:45).
+  ! [loopConflict] Sam: Call with vendor 3:15–3:45 overlaps the pickup loop (3:30–4:00).
+
+Needs
+  Emma       Library book
+  Twins      Diaper bag
+
+            6a  7a  8a  9a  10a 11a 12p 1p  2p  3p  4p  5p  6p  7p  8p
+Us
+  Sam       ··········WWWWWWWWWWWWWWWWWWWWWWWWWWWEPPWWWW················
+  Kate      ················EEEEEE··························EEEE········
+Kids
+  Emma      ·········SSSSSSSSSSSSSSSSSSSSSSSSSSSSSPP····················
+  Nora      ·······CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCP··EE················
+  Twins     ·······CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCP····················
+Grandparents
+  Grandpa   ·······CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC·····················
+  Grandma   ·······CCCCCCCCCCCCCCCCCCCCCEEEEEECCCCC·····················
+  P pickupLoop · E appointment · A activity · S school · C care · W work · · nothing · ? no data
+
+Us
+  Sam
+    08:30–17:00  Work
+    15:15–15:45  Call with vendor  [Sam: calendarOwner]
+    15:30–16:00  Pickup loop · School 3:30 → Grandma & Grandpa's 3:45 → home ~4:00
+  Kate
+    10:00–11:30  Client review  [Kate: calendarOwner]
+    18:00–19:00  Yoga  [Kate: calendarOwner]
+Kids
+  Emma
+    08:15–15:30  School
+    15:30–16:00  Pickup → home · Picked up at School 3:30
+  Nora
+    07:45–15:45  With Grandma & Grandpa
+    15:45–16:00  Pickup → home · Picked up at Grandma & Grandpa's 3:45
+    16:30–17:00  Haircut – Nora  [Family: namedInTitle]
+  Twins
+    07:45–15:45  With Grandma & Grandpa
+    15:45–16:00  Pickup → home · Picked up at Grandma & Grandpa's 3:45
+Grandparents
+  Grandpa
+    07:45–15:45  Watching Nora & Twins
+  Grandma
+    07:45–15:45  Watching Nora & Twins
+    13:00–14:30  Nana's book club  [Family: namedInTitle]
