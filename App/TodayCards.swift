@@ -306,7 +306,7 @@ private struct BlockView: View {
         Text(w >= 28 ? label : "")
             .font(.caption.weight(.semibold))
             .lineLimit(1)
-            .padding(.horizontal, 7)
+            .padding(.horizontal, 5)
             .frame(width: w, height: size.height, alignment: .leading)
             .foregroundStyle(foreground)
             .background(background, in: RoundedRectangle(cornerRadius: block.style == .background ? 10 : 8, style: .continuous))
@@ -330,9 +330,17 @@ private struct BlockView: View {
         }
     }
 
+    /// Short words that fit a lane: "Ride", "Grandparents", "Watching".
     private var label: String {
-        if block.item.id.hasPrefix("loop:") { return "Ride" }
-        return block.item.title
+        let item = block.item
+        if item.id.hasPrefix("loop:") { return "Ride" }
+        guard item.kind == .care else { return item.title }
+        if item.title.hasPrefix("Watching") { return "Watching" }
+        for prefix in ["With the ", "With "] where item.title.hasPrefix(prefix) {
+            let rest = item.title.dropFirst(prefix.count)
+            return rest.prefix(1).uppercased() + rest.dropFirst()
+        }
+        return item.title
     }
 
     private var background: Color {

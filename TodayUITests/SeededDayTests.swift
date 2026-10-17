@@ -106,22 +106,19 @@ final class SeededDayTests: XCTestCase {
 
         app.buttons["rule.serc"].tap()
         XCTAssertTrue(app.textFields["rule.name"].waitForExistence(timeout: 10))
-        // The preview is near the bottom of the form, whose rows load as they scroll in.
+        // The preview is near the bottom of the form.
         let count = app.staticTexts["rule.preview.count"]
-        for _ in 0..<5 where !count.exists {
-            app.swipeUp()
-        }
-        XCTAssertTrue(count.waitForExistence(timeout: 10))
+        XCTAssertTrue(scroll(to: count, in: app))
         XCTAssertEqual(count.label, "Matches 2 events")
         keepScreenshot(of: app, named: "\(Self.milestone)-household-4-rule")
         app.buttons["editor.cancel"].tap()
 
         tabs.buttons["Schedule"].tap()
-        XCTAssertTrue(app.buttons["schedule.loop"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["schedule.block.work"].waitForExistence(timeout: 10))
         keepScreenshot(of: app, named: "\(Self.milestone)-household-5-schedule")
 
         tabs.buttons["Calendars"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["calendar.missing.Kate"].waitForExistence(timeout: 10))
+        XCTAssertTrue(scroll(to: app.descendants(matching: .any)["calendar.missing.Kate"], in: app))
         keepScreenshot(of: app, named: "\(Self.milestone)-household-6-calendars")
     }
 
@@ -148,6 +145,17 @@ final class SeededDayTests: XCTestCase {
         XCTAssertTrue(app.buttons["rules.warnings"].exists)
         XCTAssertFalse(app.staticTexts["rules.error"].exists)
         keepScreenshot(of: app, named: "\(Self.milestone)-bundled-rules")
+    }
+
+    /// Swipes up until `element` exists: lists and forms only load the rows
+    /// that have scrolled into view.
+    @MainActor
+    private func scroll(to element: XCUIElement, in app: XCUIApplication) -> Bool {
+        for _ in 0..<6 {
+            if element.waitForExistence(timeout: 2) { return true }
+            app.swipeUp()
+        }
+        return element.exists
     }
 
     @MainActor
