@@ -1,7 +1,28 @@
 #if canImport(EventKit)
+import CoreGraphics
 import EventKit
 import Foundation
 import TodayCore
+
+/// A calendar on the device, for the Calendars tab.
+public struct DeviceCalendar: Sendable, Equatable, Identifiable {
+    public let title: String
+    /// "#RRGGBB", the calendar's color in the Calendar app.
+    public let colorHex: String?
+    /// The account it belongs to ("iCloud", "Gmail").
+    public let account: String
+    /// The iOS Birthdays calendar: it feeds the birthdays card, never a lane.
+    public let isBirthdays: Bool
+
+    public var id: String { title }
+
+    public init(title: String, colorHex: String?, account: String, isBirthdays: Bool) {
+        self.title = title
+        self.colorHex = colorHex
+        self.account = account
+        self.isBirthdays = isBirthdays
+    }
+}
 
 /// Reads calendars, reminders and the Birthdays calendar on the device, and
 /// hands them to the planner as plain `TodayCore` values. Nothing leaves the
@@ -55,6 +76,37 @@ public actor EventKitSource {
     public func calendarsOnDevice() -> Set<String> {
         guard Self.access(for: .event) == .granted else { return [] }
         return Set(store.calendars(for: .event).filter { $0.type != .birthday }.map(\.title))
+    }
+
+    /// Every event calendar on the device, Birthdays included, by title.
+    public func deviceCalendars() -> [DeviceCalendar] {
+        guard Self.access(for: .event) == .granted else { return [] }
+        var seen = Set<String>()
+        return store.calendars(for: .event)
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+            .compactMap { calendar in
+                guard seen.insert(calendar.title.lowercased()).inserted else { return nil }
+                return DeviceCalendar(title: calendar.title, colorHex: EventKitMapping.hex(calendar.cgColor),
+                                      account: calendar.source?.title ?? "", isBirthdays: calendar.type == .birthday)
+            }
+    }
+
+    /// The names of the device's Reminders lists.
+    public func reminderListTitles() -> [String] {
+        guard Self.access(for: .reminder) == .granted else { return [] }
+        return Array(Set(store.calendars(for: .reminder).map(\.title)))
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    /// Events from the start of `date` through `days` days, for the rule
+    /// editor's preview.
+    public func events(from date: LocalDate, days: Int, clock: HouseholdClock) -> [SourceEvent] {
+        guard Self.access(for: .event) == .granted else { return [] }
+        let calendars = store.calendars(for: .event).filter { $0.type != .birthday }
+        guard !calendars.isEmpty else { return [] }
+        let predicate = store.predicateForEvents(
+            withStart: clock.startOfDay(date), end: clock.endOfDay(date.adding(days: days - 1)), calendars: calendars)
+        return store.events(matching: predicate).map { EventKitMapping.sourceEvent($0, clock: clock) }
     }
 
     /// Everything the planner needs for `date`.
@@ -129,6 +181,15 @@ public enum EventKitMapping {
     /// (`HouseholdClock.allDayDates` explains the midday reading).
     public static func allDayDates(of event: EKEvent, clock: HouseholdClock) -> (first: LocalDate, last: LocalDate) {
         clock.allDayDates(start: event.startDate, end: event.endDate)
+    }
+
+    /// "#RRGGBB" for a calendar color, in sRGB.
+    public static func hex(_ color: CGColor?) -> String? {
+        guard let color, let srgb = CGColorSpace(name: CGColorSpace.sRGB),
+              let converted = color.converted(to: srgb, intent: .defaultIntent, options: nil),
+              let c = converted.components, c.count >= 3 else { return nil }
+        func byte(_ value: CGFloat) -> Int { Int((min(max(value, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", byte(c[0]), byte(c[1]), byte(c[2]))
     }
 
     /// "Aunt Jo’s Birthday" → "Aunt Jo".

@@ -10,6 +10,7 @@
 		AA0000000000000000000050 /* TodayCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000061 /* TodayCore */; };
 		AA0000000000000000000051 /* TodayCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000062 /* TodayCore */; };
 		AA0000000000000000000053 /* TodaySources in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000063 /* TodaySources */; };
+		AA0000000000000000000054 /* TodayCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000064 /* TodayCore */; };
 		AA0000000000000000000052 /* TodayWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000021 /* TodayWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -113,6 +114,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA0000000000000000000054 /* TodayCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -221,6 +223,9 @@
 				AA0000000000000000000013 /* TodayTests */,
 			);
 			name = TodayTests;
+			packageProductDependencies = (
+				AA0000000000000000000064 /* TodayCore */,
+			);
 			productName = TodayTests;
 			productReference = AA0000000000000000000022 /* TodayTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -456,6 +461,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Today;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Today reads your calendars on this iPhone to draw each person's lane. Nothing leaves the device.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Today reads the Reminders lists you choose to show what each kid needs. Nothing leaves the device.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Today uses this iPhone's location once, when you ask, to set your home for the weather forecast.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -487,6 +493,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Today;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Today reads your calendars on this iPhone to draw each person's lane. Nothing leaves the device.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Today reads the Reminders lists you choose to show what each kid needs. Nothing leaves the device.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Today uses this iPhone's location once, when you ask, to set your home for the weather forecast.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -684,6 +691,10 @@
 		AA0000000000000000000063 /* TodaySources */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TodaySources;
+		};
+		AA0000000000000000000064 /* TodayCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TodayCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

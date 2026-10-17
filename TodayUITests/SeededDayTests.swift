@@ -1,10 +1,11 @@
 import XCTest
 
-/// Launches the app on each seeded sample day and on the bundled rules, and
-/// keeps a screenshot of each as a named attachment in the result bundle.
-/// CI exports those attachments to the ci-screenshots branch.
+/// Launches the app on each seeded sample day (pinned to 2:40 PM, as in the
+/// approved mockup) and on the bundled rules, walks the main screens, and
+/// keeps a named screenshot of each in the result bundle. CI exports them
+/// to the ci-screenshots branch.
 final class SeededDayTests: XCTestCase {
-    static let milestone = "M2"
+    static let milestone = "M3"
     static let seededDays = ["2026-10-20", "2026-10-21", "2026-10-24"]
 
     override func setUpWithError() throws {
@@ -12,43 +13,136 @@ final class SeededDayTests: XCTestCase {
     }
 
     @MainActor
+    private func launch(seed: String) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["TODAY_SEED"] = seed
+        app.launch()
+        XCTAssertTrue(app.staticTexts["today.title"].waitForExistence(timeout: 60), "\(seed): the Today screen never appeared")
+        return app
+    }
+
+    @MainActor
     func testSeededDays() throws {
         for day in Self.seededDays {
-            let app = XCUIApplication()
-            app.launchEnvironment["TODAY_SEED"] = day
-            app.launch()
-            let plan = app.staticTexts["plan.text"]
-            XCTAssertTrue(plan.waitForExistence(timeout: 60), "\(day): the plan text never appeared")
+            let app = launch(seed: day)
+            let upNext = app.staticTexts["upnext.title"]
+            XCTAssertTrue(upNext.waitForExistence(timeout: 30), day)
             switch day {
             case "2026-10-20":
-                XCTAssertTrue(plan.label.contains("Pickup loop"), day)
+                XCTAssertEqual(app.staticTexts["today.title"].label, "Tuesday")
+                XCTAssertEqual(upNext.label, "Pickup loop", day)
                 // The wife's calendar is missing on this seed: no data, never free.
-                XCTAssertTrue(plan.label.contains("NO DATA"), day)
-                XCTAssertTrue(plan.label.contains("rule \"SERC → Jess\""), day)
-                XCTAssertTrue(plan.label.contains("Hidden by rules"), day)
+                XCTAssertTrue(app.staticTexts["lane.nodata.Kate"].exists, day)
+                XCTAssertTrue(app.descendants(matching: .any)["block.event:2026-10-20-serc"].exists, day)
             case "2026-10-21":
-                XCTAssertTrue(plan.label.contains("SERC board call  [Sam: rule \"SERC → Jess\"]"), day)
+                XCTAssertEqual(upNext.label, "Pickup loop", day)
+                // The vendor call overlaps the loop.
+                XCTAssertTrue(app.descendants(matching: .any)["alert.0"].exists, day)
             default:
-                XCTAssertTrue(plan.label.contains("weekend: no school, no pickup loop"), day)
-                XCTAssertTrue(plan.label.contains("Aunt Jo"), day)
+                XCTAssertEqual(app.staticTexts["today.title"].label, "Saturday")
+                XCTAssertTrue(upNext.label.hasPrefix("Nothing else"), day)
             }
-            keepScreenshot(of: app, named: "\(Self.milestone)-seed-\(day)")
+            keepScreenshot(of: app, named: "\(Self.milestone)-\(day)-1-top")
+            app.swipeUp()
+            keepScreenshot(of: app, named: "\(Self.milestone)-\(day)-2-lanes")
+            app.swipeUp()
+            app.swipeUp()
+            keepScreenshot(of: app, named: "\(Self.milestone)-\(day)-3-cards")
             app.terminate()
         }
+    }
+
+    /// Scrolls the Today screen until Jess's SERC planning block can be tapped.
+    @MainActor
+    private func tapSERC(in app: XCUIApplication) {
+        let serc = app.descendants(matching: .any)["block.event:2026-10-20-serc"]
+        XCTAssertTrue(serc.waitForExistence(timeout: 20))
+        for _ in 0..<3 where !serc.isHittable {
+            app.swipeUp()
+        }
+        serc.tap()
+    }
+
+    @MainActor
+    func testWhyIsThisHere() throws {
+        let app = launch(seed: "2026-10-20")
+        tapSERC(in: app)
+        let headline = app.staticTexts["why.headline"]
+        XCTAssertTrue(headline.waitForExistence(timeout: 20))
+        XCTAssertEqual(headline.label, "On Jess's lane")
+        XCTAssertTrue(app.staticTexts["Rule \"SERC → Jess\" · Title contains \"SERC\""].exists)
+        keepScreenshot(of: app, named: "\(Self.milestone)-why-serc")
+    }
+
+    @MainActor
+    func testBrief() throws {
+        let app = launch(seed: "2026-10-20")
+        app.buttons["brief.play"].tap()
+        let text = app.staticTexts["brief.text"]
+        XCTAssertTrue(text.waitForExistence(timeout: 10))
+        XCTAssertTrue(text.label.contains("pickup loop at 3:30"), text.label)
+        XCTAssertFalse(text.label.lowercased().contains("free"), text.label)
+        keepScreenshot(of: app, named: "\(Self.milestone)-brief")
+        app.buttons["brief.play"].tap()
+    }
+
+    @MainActor
+    func testHousehold() throws {
+        let app = launch(seed: "2026-10-20")
+        app.buttons["household.open"].tap()
+        let tabs = app.segmentedControls["household.tabs"]
+        XCTAssertTrue(tabs.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["person.grandpa"].waitForExistence(timeout: 10))
+        keepScreenshot(of: app, named: "\(Self.milestone)-household-1-people")
+
+        app.buttons["person.kinder"].tap()
+        XCTAssertTrue(app.textFields["person.name"].waitForExistence(timeout: 10))
+        keepScreenshot(of: app, named: "\(Self.milestone)-household-2-person")
+        app.buttons["editor.cancel"].tap()
+
+        tabs.buttons["Rules"].tap()
+        XCTAssertTrue(app.buttons["rule.serc"].waitForExistence(timeout: 10))
+        keepScreenshot(of: app, named: "\(Self.milestone)-household-3-rules")
+
+        app.buttons["rule.serc"].tap()
+        let count = app.staticTexts["rule.preview.count"]
+        XCTAssertTrue(count.waitForExistence(timeout: 20))
+        XCTAssertEqual(count.label, "Matches 2 events")
+        app.swipeUp()
+        keepScreenshot(of: app, named: "\(Self.milestone)-household-4-rule")
+        app.buttons["editor.cancel"].tap()
+
+        tabs.buttons["Schedule"].tap()
+        XCTAssertTrue(app.buttons["schedule.loop"].waitForExistence(timeout: 10))
+        keepScreenshot(of: app, named: "\(Self.milestone)-household-5-schedule")
+
+        tabs.buttons["Calendars"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar.missing.Kate"].waitForExistence(timeout: 10))
+        keepScreenshot(of: app, named: "\(Self.milestone)-household-6-calendars")
+    }
+
+    @MainActor
+    func testMoveToMakesARule() throws {
+        let app = launch(seed: "2026-10-20")
+        tapSERC(in: app)
+        XCTAssertTrue(app.staticTexts["why.headline"].waitForExistence(timeout: 20))
+        app.buttons["why.move.dad"].tap()
+        let moved = NSPredicate(format: "label == %@", "On Sam's lane")
+        let followed = expectation(for: moved, evaluatedWith: app.staticTexts["why.headline"])
+        wait(for: [followed], timeout: 10)
+        keepScreenshot(of: app, named: "\(Self.milestone)-why-moved")
     }
 
     @MainActor
     func testBundledRulesLoad() throws {
         let app = XCUIApplication()
         app.launch()
-        let plan = app.staticTexts["plan.text"]
-        XCTAssertTrue(plan.waitForExistence(timeout: 60))
-        let loaded = expectation(for: NSPredicate(format: "label CONTAINS %@", "Rules incomplete"), evaluatedWith: plan)
-        wait(for: [loaded], timeout: 60)
-        XCTAssertFalse(app.staticTexts["rules.error"].exists)
+        XCTAssertTrue(app.staticTexts["today.title"].waitForExistence(timeout: 60))
         // A fresh install asks nothing until the button is tapped.
-        XCTAssertTrue(app.buttons["connect.calendars"].exists)
-        XCTAssertTrue(plan.label.contains("Calendars not connected yet"))
+        XCTAssertTrue(app.buttons["connect.calendars"].waitForExistence(timeout: 30))
+        // The real rules still have placeholders to fill in.
+        XCTAssertTrue(app.buttons["rules.warnings"].exists)
+        XCTAssertFalse(app.staticTexts["rules.error"].exists)
         keepScreenshot(of: app, named: "\(Self.milestone)-bundled-rules")
     }
 

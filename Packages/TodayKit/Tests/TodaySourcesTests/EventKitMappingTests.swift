@@ -1,4 +1,5 @@
 #if canImport(EventKit)
+import CoreGraphics
 import EventKit
 import Foundation
 import Testing
@@ -66,6 +67,13 @@ struct EventKitMappingTests {
     ])
     func birthdayNames(_ title: String, _ name: String) {
         #expect(EventKitMapping.birthdayName(fromTitle: title) == name)
+    }
+
+    @Test func calendarColorsAsHex() {
+        let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+        let orange = CGColor(colorSpace: srgb, components: [1, 159.0 / 255, 69.0 / 255, 1])!
+        #expect(EventKitMapping.hex(orange) == "#FF9F45")
+        #expect(EventKitMapping.hex(nil) == nil)
     }
 
     @Test func reminderDueDate() {

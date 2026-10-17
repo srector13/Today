@@ -6,5 +6,7 @@
 	<array>
 		<string>group.PolarReailty.Today</string>
 	</array>
+	<key>com.apple.developer.weatherkit</key>
+	<true/>
 </dict>
 </plist>

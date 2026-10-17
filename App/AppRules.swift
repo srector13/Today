@@ -41,7 +41,8 @@ enum AppRules {
 enum AppLaunch {
     /// `TODAY_SEED=2026-10-21`: show the sample household's seeded day.
     static let seedKey = "TODAY_SEED"
-    /// `TODAY_NOW=<seconds since 1970>`: pin the clock.
+    /// `TODAY_NOW=<seconds since 1970>`: pin the clock. Seeded days pin it
+    /// to 2:40 PM on the seeded day without it.
     static let nowKey = "TODAY_NOW"
 
     static var seedDate: LocalDate? {
@@ -52,12 +53,12 @@ enum AppLaunch {
         #endif
     }
 
-    static var now: Date {
+    static var pinnedNow: Date? {
         #if DEBUG
         if let raw = ProcessInfo.processInfo.environment[nowKey], let seconds = TimeInterval(raw) {
             return Date(timeIntervalSince1970: seconds)
         }
         #endif
-        return Date()
+        return nil
     }
 }
