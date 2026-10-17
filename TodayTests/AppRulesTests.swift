@@ -75,6 +75,7 @@ final class AppRulesTests: XCTestCase {
         XCTAssertFalse(model.doneNeeds.contains(key))
     }
 
+    @MainActor
     func testPhotosAreCroppedSquare() throws {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 200))
         let image = renderer.image { context in

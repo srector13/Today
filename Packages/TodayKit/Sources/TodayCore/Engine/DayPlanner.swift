@@ -106,7 +106,7 @@ public struct DayPlanner: Sendable {
         return thisYear >= date ? thisYear : occurrence(in: date.year + 1)
     }
 
-    static func list(_ words: [String]) -> String {
+    public static func list(_ words: [String]) -> String {
         switch words.count {
         case 0: ""
         case 1: words[0]
