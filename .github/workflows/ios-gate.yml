@@ -135,7 +135,9 @@ jobs:
           fi
           rm -rf attachments screenshots && mkdir -p attachments screenshots
           xcrun xcresulttool export attachments --path TestResults.xcresult --output-path attachments
-          # Name each PNG by the attachment's own name (e.g. M1-seed-2026-10-20.png).
+          # Name each image by the attachment's own name (e.g. M3-2026-10-20-1-top.png).
+          # Text attachments (UI hierarchy dumps from failures) go to diagnostics/;
+          # recordings and binary snapshots stay in the result bundle.
           python3 - attachments screenshots <<'PY'
           import json, os, re, shutil, sys
           src, dst = sys.argv[1], sys.argv[2]
@@ -152,15 +154,28 @@ jobs:
                   for value in node:
                       walk(value)
           walk(manifest)
+          os.makedirs(os.path.join(dst, "diagnostics"), exist_ok=True)
           for exported, suggested in found:
-              base, ext = os.path.splitext(suggested)
+              ext = os.path.splitext(exported)[1].lower()
+              base = os.path.splitext(suggested)[0] if os.path.splitext(suggested)[1].lower() == ext else suggested
               # Xcode suffixes "_<n>_<UUID>"; keep the name the test gave.
               base = re.sub(r"_\d+_[0-9A-Fa-f-]{36}$", "", base)
-              target = os.path.join(dst, base + (ext or ".png"))
+              # Artifact uploads refuse quotes, colons and the like.
+              base = re.sub(r"[^A-Za-z0-9._ -]+", "_", base).strip(" ._") or "attachment"
+              if ext in (".png", ".jpg", ".jpeg"):
+                  target = os.path.join(dst, base + ext)
+              elif ext in (".txt", ""):
+                  try:
+                      open(os.path.join(src, exported), encoding="utf-8").read()
+                  except (UnicodeDecodeError, IsADirectoryError):
+                      continue
+                  target = os.path.join(dst, "diagnostics", base + ".txt")
+              else:
+                  continue
               shutil.copy(os.path.join(src, exported), target)
-              print("exported", os.path.basename(target))
+              print("exported", os.path.relpath(target, dst))
           PY
-          echo "count=$(ls screenshots | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          echo "count=$(find screenshots -type f | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
 
       - name: Upload screenshots and results
         if: always()
@@ -191,7 +206,7 @@ jobs:
           fi
           DIR="${WORK}/${GITHUB_REF_NAME}"
           rm -rf "$DIR" && mkdir -p "$DIR"
-          cp screenshots/* "$DIR/"
+          cp -R screenshots/. "$DIR/"
           printf 'commit %s\nrun %s\nsimulator %s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "${SIM_NAME:-unknown}" > "$DIR/SOURCE.txt"
           cd "$WORK"
           git config user.name "github-actions[bot]"

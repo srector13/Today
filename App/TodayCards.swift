@@ -148,7 +148,10 @@ struct LanesCard: View {
                 Color.clear.frame(width: Self.labelWidth, height: 1)
                 GeometryReader { geo in
                     ZStack(alignment: .topLeading) {
-                        ForEach(marks) { mark in
+                        // Marks under the "now" pill would collide with it.
+                        ForEach(marks.filter { mark in
+                            nowFraction.map { abs($0 - mark.fraction) * geo.size.width > 26 } ?? true
+                        }) { mark in
                             Text(mark.label)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(Theme.tertiary)
@@ -251,11 +254,20 @@ private struct LaneRow: View {
                     if case .noData = lane.data {
                         Hatch()
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        if blocks.allSatisfy({ $0.style == .background }) {
+                        if blocks.isEmpty {
                             Text("No data · calendar not on this iPhone")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(Color(white: 0.78))
                                 .frame(width: width, height: LanesCard.barHeight)
+                                .accessibilityIdentifier("lane.nodata.\(lane.label)")
+                        } else if blocks.allSatisfy({ $0.style == .background }) {
+                            // Work or school from the rules is still known; say
+                            // "no data" after it rather than over it.
+                            Text("No data")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color(white: 0.78))
+                                .padding(.trailing, 10)
+                                .frame(width: width, height: LanesCard.barHeight, alignment: .trailing)
                                 .accessibilityIdentifier("lane.nodata.\(lane.label)")
                         }
                     }
@@ -275,6 +287,7 @@ private struct LaneRow: View {
             .frame(height: LanesCard.barHeight)
         }
         .frame(height: 48)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("lane.\(lane.label)")
     }
 }
@@ -474,6 +487,7 @@ struct WeatherCard: View {
             }
         }
         .card()
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("weather.card")
     }
 }
@@ -506,6 +520,7 @@ struct NeedsCard: View {
             }
         }
         .card()
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("needs.card")
     }
 }
@@ -567,6 +582,7 @@ struct BirthdaysCard: View {
             }
         }
         .card()
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("birthdays.card")
     }
 

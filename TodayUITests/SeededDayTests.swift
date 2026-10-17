@@ -105,10 +105,14 @@ final class SeededDayTests: XCTestCase {
         keepScreenshot(of: app, named: "\(Self.milestone)-household-3-rules")
 
         app.buttons["rule.serc"].tap()
+        XCTAssertTrue(app.textFields["rule.name"].waitForExistence(timeout: 10))
+        // The preview is near the bottom of the form, whose rows load as they scroll in.
         let count = app.staticTexts["rule.preview.count"]
-        XCTAssertTrue(count.waitForExistence(timeout: 20))
+        for _ in 0..<5 where !count.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(count.waitForExistence(timeout: 10))
         XCTAssertEqual(count.label, "Matches 2 events")
-        app.swipeUp()
         keepScreenshot(of: app, named: "\(Self.milestone)-household-4-rule")
         app.buttons["editor.cancel"].tap()
 
