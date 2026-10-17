@@ -27,6 +27,10 @@ public struct RulesIssue: Sendable, Equatable, CustomStringConvertible {
 public struct RulesError: Error, Sendable, CustomStringConvertible {
     public let issues: [RulesIssue]
 
+    public init(issues: [RulesIssue]) {
+        self.issues = issues
+    }
+
     public var description: String {
         issues.map(\.description).joined(separator: "\n")
     }
