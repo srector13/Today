@@ -125,17 +125,10 @@ public enum EventKitMapping {
                            isAllDay: false, location: event.location, notes: event.notes)
     }
 
-    /// The first and last day of an all-day event, in household dates.
-    ///
-    /// All-day events float: EventKit pins them to midnight in the device's
-    /// zone, which on a phone travelling outside Chicago lands on the wrong
-    /// Chicago day at midnight. Reading each end at midday is right for any
-    /// zone within ±12 hours.
+    /// The first and last day of an all-day event, in household dates
+    /// (`HouseholdClock.allDayDates` explains the midday reading).
     public static func allDayDates(of event: EKEvent, clock: HouseholdClock) -> (first: LocalDate, last: LocalDate) {
-        let halfDay: TimeInterval = 12 * 3600
-        let first = clock.localDate(of: event.startDate.addingTimeInterval(halfDay))
-        let last = clock.localDate(of: event.endDate.addingTimeInterval(-halfDay))
-        return (first, max(first, last))
+        clock.allDayDates(start: event.startDate, end: event.endDate)
     }
 
     /// "Aunt Jo’s Birthday" → "Aunt Jo".

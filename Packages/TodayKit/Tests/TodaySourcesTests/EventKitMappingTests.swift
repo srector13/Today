@@ -36,22 +36,23 @@ struct EventKitMappingTests {
         #expect(!mapped.isAllDay)
     }
 
-    @Test func allDayEventFromAnotherZoneStaysOnItsDay() {
-        // All-day Oct 24, as EventKit pins it on a phone in Los Angeles.
-        var la = Calendar(identifier: .gregorian)
-        la.timeZone = TimeZone(identifier: "America/Los_Angeles")!
-        let start = la.date(from: DateComponents(year: 2026, month: 10, day: 24))!
-        let end = la.date(from: DateComponents(year: 2026, month: 10, day: 24, hour: 23, minute: 59, second: 59))!
-        let mapped = EventKitMapping.sourceEvent(event("Trip", calendar: "Family", start: start, end: end, allDay: true), clock: clock)
+    // EventKit re-pins an all-day event's dates to midnight in the test
+    // machine's own zone (UTC on CI). Noon UTC falls on the same calendar day
+    // in every zone within ±12 hours, so these inputs survive that on any Mac.
+    // The zone arithmetic itself is tested in TodayCore (HouseholdClockTests).
+
+    @Test func allDayEventMapsToWholeHouseholdDays() {
+        let noonOct24 = Date(timeIntervalSince1970: 1_792_843_200) // 2026-10-24T12:00Z
+        let mapped = EventKitMapping.sourceEvent(event("Trip", calendar: "Family", start: noonOct24, end: noonOct24, allDay: true), clock: clock)
         #expect(mapped.isAllDay)
         #expect(mapped.start == clock.startOfDay(LocalDate(iso: "2026-10-24")!))
         #expect(mapped.end == clock.endOfDay(LocalDate(iso: "2026-10-24")!))
     }
 
     @Test func multiDayAllDayEvent() {
-        let start = clock.startOfDay(LocalDate(iso: "2026-11-25")!)
-        let end = clock.endOfDay(LocalDate(iso: "2026-11-27")!)
-        let dates = EventKitMapping.allDayDates(of: event("Break", calendar: "Family", start: start, end: end, allDay: true), clock: clock)
+        let noonNov25 = Date(timeIntervalSince1970: 1_795_608_000) // 2026-11-25T12:00Z
+        let noonNov27 = Date(timeIntervalSince1970: 1_795_780_800) // 2026-11-27T12:00Z
+        let dates = EventKitMapping.allDayDates(of: event("Break", calendar: "Family", start: noonNov25, end: noonNov27, allDay: true), clock: clock)
         #expect(dates.first.iso == "2026-11-25")
         #expect(dates.last.iso == "2026-11-27")
     }

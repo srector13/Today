@@ -103,6 +103,42 @@ struct HouseholdClockTests {
         #expect(clock.localTime(of: instant) == LocalTime("22:00"))
     }
 
+    /// What calendars hand over for an all-day event on a phone in `zone`:
+    /// local midnight of the first day, and either 23:59:59 of the last day
+    /// or the next midnight.
+    private func allDay(_ first: String, _ last: String, in zone: String, exclusiveEnd: Bool) -> (Date, Date) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: zone)!
+        let a = LocalDate(iso: first)!, b = LocalDate(iso: last)!
+        let start = calendar.date(from: DateComponents(year: a.year, month: a.month, day: a.day))!
+        let end = exclusiveEnd
+            ? calendar.date(from: DateComponents(year: b.adding(days: 1).year, month: b.adding(days: 1).month, day: b.adding(days: 1).day))!
+            : calendar.date(from: DateComponents(year: b.year, month: b.month, day: b.day, hour: 23, minute: 59, second: 59))!
+        return (start, end)
+    }
+
+    @Test(arguments: [
+        ("America/Chicago", false), ("America/Chicago", true),
+        ("America/Los_Angeles", false), ("America/Los_Angeles", true),
+        ("America/New_York", false), ("Etc/UTC", false), ("Etc/UTC", true),
+    ])
+    func allDayEventsKeepTheirDaysFromAnyNearbyZone(_ zone: String, _ exclusiveEnd: Bool) {
+        let (start, end) = allDay("2026-10-24", "2026-10-24", in: zone, exclusiveEnd: exclusiveEnd)
+        let oneDay = clock.allDayDates(start: start, end: end)
+        #expect(oneDay.first.iso == "2026-10-24" && oneDay.last.iso == "2026-10-24", "\(zone)")
+
+        let (s, e) = allDay("2026-11-25", "2026-11-27", in: zone, exclusiveEnd: exclusiveEnd)
+        let threeDays = clock.allDayDates(start: s, end: e)
+        #expect(threeDays.first.iso == "2026-11-25" && threeDays.last.iso == "2026-11-27", "\(zone)")
+    }
+
+    @Test func allDayAcrossTheFallBackChange() {
+        // Oct 31 – Nov 1, 2026: the second day is 25 hours long in Chicago.
+        let (start, end) = allDay("2026-10-31", "2026-11-01", in: "America/Chicago", exclusiveEnd: false)
+        let dates = clock.allDayDates(start: start, end: end)
+        #expect(dates.first.iso == "2026-10-31" && dates.last.iso == "2026-11-01")
+    }
+
     @Test func unknownZoneThrows() {
         #expect(throws: HouseholdClock.UnknownTimeZone.self) {
             try HouseholdClock(timeZoneIdentifier: "America/Chicagoo")

@@ -90,7 +90,11 @@ jobs:
             echo "DESTINATION=platform=iOS Simulator,name=iPhone 17,OS=latest" >> "$GITHUB_ENV"
           fi
 
+      # Doesn't stop the job: the iOS build and tests below still run, so one
+      # run reports every kind of failure. "Core tests verdict" fails the job.
       - name: Test TodayCore (macOS host)
+        id: core
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
@@ -195,6 +199,12 @@ jobs:
           git add -A
           git commit --quiet -m "Screenshots: ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7} (run ${GITHUB_RUN_NUMBER})"
           git push --quiet origin HEAD:ci-screenshots
+
+      - name: Core tests verdict
+        if: always() && steps.core.outcome == 'failure'
+        run: |
+          echo "::error::TodayKit tests failed on macOS (see the 'Test TodayCore (macOS host)' step)."
+          exit 1
 
       - name: Upload logs
         if: failure()

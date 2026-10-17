@@ -57,4 +57,18 @@ public struct HouseholdClock: Sendable {
         let c = calendar.dateComponents([.hour, .minute], from: instant)
         return LocalTime(hour: c.hour!, minute: c.minute!)!
     }
+
+    /// The first and last household day of an all-day event.
+    ///
+    /// All-day events float: calendars pin them to midnight in the device's
+    /// zone, with the end at 23:59:59 of the last day (or the next midnight).
+    /// On a phone outside Chicago that midnight is the wrong Chicago day, so
+    /// each end is read at midday instead, which is right for any device zone
+    /// within ±12 hours of Chicago.
+    public func allDayDates(start: Date, end: Date) -> (first: LocalDate, last: LocalDate) {
+        let halfDay: TimeInterval = 12 * 3600
+        let first = localDate(of: start.addingTimeInterval(halfDay))
+        let last = localDate(of: end.addingTimeInterval(-halfDay))
+        return (first, max(first, last))
+    }
 }
