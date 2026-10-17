@@ -1,4 +1,0 @@
-Query chain:
- →Find: Target Application 'PolarReailty.Today'
-  ↪︎Find: Descendants matching type StaticText
-    ↪︎Find: Elements matching predicate '"rule.preview.count" IN identifiers'
