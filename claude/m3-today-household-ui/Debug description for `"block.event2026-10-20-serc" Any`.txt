@@ -1,0 +1,4 @@
+Query chain:
+ →Find: Target Application 'PolarReailty.Today'
+  ↪︎Find: Descendants matching type Any
+    ↪︎Find: Elements matching predicate '"block.event:2026-10-20-serc" IN identifiers'
