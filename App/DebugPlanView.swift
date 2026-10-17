@@ -102,15 +102,19 @@ struct PlanTextView<Header: View>: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView([.vertical, .horizontal]) {
-                VStack(alignment: .leading, spacing: 16) {
-                    header
+            VStack(spacing: 0) {
+                // Outside the scroll view, so it keeps the screen's width
+                // instead of the widest line of text's.
+                header
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                ScrollView([.vertical, .horizontal]) {
                     Text(text)
                         .font(.system(size: 9, design: .monospaced))
                         .foregroundStyle(isError ? Color.red : Color.primary)
                         .accessibilityIdentifier(isError ? "rules.error" : "plan.text")
+                        .padding()
                 }
-                .padding()
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
