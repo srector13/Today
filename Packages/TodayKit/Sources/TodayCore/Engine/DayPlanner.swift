@@ -153,19 +153,23 @@ private struct PlanBuilder {
     }
 
     /// The people whose day we can't see, and why. A personal calendar that
-    /// isn't on the device blanks its owner; a missing shared calendar blanks
-    /// its default owner and hides every name-tagged event, so it also alerts.
+    /// isn't on the device blanks its owner. A missing shared calendar blanks
+    /// everyone, because a name in a title can put its events on any lane,
+    /// and it alerts.
     private mutating func noDataReasons(_ missing: [CalendarRule]) -> [PersonID: String] {
         var reasons: [PersonID: String] = [:]
+        for calendar in missing where calendar.role == .personal {
+            if let owner = calendar.owner {
+                reasons[owner] = "the \"\(calendar.title)\" calendar isn't on this device"
+            }
+        }
         for calendar in missing {
             switch calendar.role {
             case .personal:
-                if let owner = calendar.owner {
-                    reasons[owner] = "the \"\(calendar.title)\" calendar isn't on this device"
-                }
+                continue
             case .shared:
-                if let owner = calendar.defaultOwner {
-                    reasons[owner] = "the \"\(calendar.title)\" calendar isn't on this device"
+                for person in rules.people where reasons[person.id] == nil {
+                    reasons[person.id] = "the \"\(calendar.title)\" calendar isn't on this device"
                 }
                 alerts.append(PlanAlert(
                     kind: .missingCalendar,

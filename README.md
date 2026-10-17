@@ -56,9 +56,11 @@ On the `shared` family calendar an event belongs to its `defaultOwner`
 (Grandpa) unless the title names people. A name in the title wins: "Dentist -
 Emma", "Emma's dentist" and "Dentist (Emma)" all go to Emma. Matching ignores
 case and accents and only matches whole words, so "Al" never matches "Almond". On a
-`personal` calendar, events belong to the owner plus anyone named. A personal
-calendar that isn't on the device makes its owner's lane **no data**. It is
-never shown as free.
+`personal` calendar, events belong to the owner plus anyone named.
+
+A personal calendar that isn't on the device makes its owner's lane **no
+data**; a missing shared calendar makes every lane no data, since a name in a
+title can put its events anywhere. Unknown time is never shown as free.
 
 ## Tests
 
@@ -80,7 +82,7 @@ Ported from MyTeams:
 | Workflow | Runs on | What |
 |---|---|---|
 | Core Tests | every push (Linux) | `swift test` for TodayCore; schema check of the rules |
-| iOS Gate | `main`, `claude/**`, manual (`xcode-27`) | build + unit/UI/core tests on the iOS 27 simulator; screenshots → `ci-screenshots` branch |
+| iOS Gate | `main`, `claude/**`, manual (`xcode-27`) | TodayCore tests on macOS; build + unit/UI tests on the iOS 27 simulator; screenshots → `ci-screenshots` branch |
 | Build unsigned IPA | manual (`xcode-27`) | Release build → `Today-v1.0.N-unsigned.ipa` GitHub Release for Feather |
 
 The repo is private, so download the `.ipa` while signed in to GitHub, then

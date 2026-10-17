@@ -52,16 +52,6 @@
                ReferencedContainer = "container:Today.xcodeproj">
             </BuildableReference>
          </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "TodayCoreTests"
-               BuildableName = "TodayCoreTests"
-               BlueprintName = "TodayCoreTests"
-               ReferencedContainer = "container:Packages/TodayKit">
-            </BuildableReference>
-         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

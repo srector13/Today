@@ -187,19 +187,25 @@ struct LaneAndNeedsTests {
         #expect(plan.lane("Kate")?.items.isEmpty == true)
     }
 
-    @Test func missingSharedCalendarBlanksTheDefaultOwnerAndAlerts() {
+    @Test func missingSharedCalendarBlanksEveryLaneAndAlerts() {
+        // Any lane can get a name-tagged family event, so none is "free".
         let plan = Fixture.plan("2026-10-21", calendars: ["Sam", "Kate"])
-        #expect(plan.lane("Grandpa")?.data.isKnown == false)
+        #expect(plan.lanes.allSatisfy { !$0.data.isKnown })
+        #expect(plan.lane("Emma")?.data == .noData(reason: "the \"Family\" calendar isn't on this device"))
         #expect(plan.alerts(.missingCalendar).count == 1)
     }
 
-    @Test func noCalendarAccessAtAllBlanksEveryCalendarLane() {
+    @Test func personalReasonWinsOverTheSharedOne() {
         let plan = Fixture.plan("2026-10-21", calendars: [])
-        #expect(plan.lane("Sam")?.data.isKnown == false)
-        #expect(plan.lane("Kate")?.data.isKnown == false)
-        #expect(plan.lane("Grandpa")?.data.isKnown == false)
+        #expect(plan.lane("Kate")?.data == .noData(reason: "the \"Kate\" calendar isn't on this device"))
+    }
+
+    @Test func noCalendarAccessAtAllBlanksEveryLane() {
+        let plan = Fixture.plan("2026-10-21", calendars: [])
+        #expect(plan.lanes.allSatisfy { !$0.data.isKnown })
         // Rules still draw what they know.
         #expect(plan.schedule(for: "kinder").first == "08:15–15:30 School")
+        #expect(plan.pickupLoop != nil)
     }
 
     @Test func needsFollowBlocksAndWeekdays() {

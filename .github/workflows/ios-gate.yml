@@ -1,8 +1,9 @@
 # iOS Gate
 #
 # Ported from MyTeams' ios-gate.yml: boot the simulator early, build, then run
-# the scheme's tests (TodayTests, TodayUITests, and the package's
-# TodayCoreTests on the iOS runtime) with code signing disabled.
+# the scheme's tests (TodayTests, TodayUITests) with code signing disabled.
+# TodayCore's own tests run here too, with `swift test` on the macOS host, so
+# the rules engine is exercised on Apple's Foundation as well as on Linux.
 #
 # Added for Today: the UI tests' named screenshots are exported from the
 # result bundle and pushed to the ci-screenshots branch under the source
@@ -88,6 +89,12 @@ jobs:
           else
             echo "DESTINATION=platform=iOS Simulator,name=iPhone 17,OS=latest" >> "$GITHUB_ENV"
           fi
+
+      - name: Test TodayCore (macOS host)
+        shell: bash
+        run: |
+          set -o pipefail
+          swift test --package-path Packages/TodayKit 2>&1 | tee core-tests.log
 
       - name: Build for testing
         shell: bash
