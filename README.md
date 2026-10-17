@@ -14,19 +14,41 @@ Rules/
 Packages/TodayKit/        Swift package, plain Swift + Foundation (runs on Linux)
   Sources/TodayCore/
     Time/                 LocalDate, LocalTime, DaySet, HouseholdClock (Chicago)
-    Rules/                Rules model, strict loader, validator
-    Engine/               DayPlanner, TitleAttributor, DayPlan, PlanText
+    Rules/                Rules model, strict loader, validator, writer, store,
+                          editing helpers (Move to, add/remove people)
+    Engine/               DayPlanner, assignment rules, lane layout, Up next,
+                          spoken brief, "why is this here?", PlanText
     Samples/              The fictional sample household + seeded days
+  Sources/TodaySources/   EventKit: calendars, reminders, Birthdays (iOS/macOS)
   Sources/today-plan/     CLI: prints a day plan as text
   Tests/TodayCoreTests/   Unit tests + Golden/ text plans for the seeded days
-App/                      iOS app (M1: a debug view of the plan)
-Widgets/                  Widget extension (M1: placeholder)
-TodayTests/ TodayUITests/ App tests; the UI tests screenshot the seeded days
+App/                      iOS app: Today screen, event sheet, brief speaker
+App/Household/            People, Rules, Schedule and Calendars editors
+Widgets/                  Widget extension (placeholder until M6)
+TodayTests/ TodayUITests/ App tests; the UI tests walk and screenshot the seeded days
 Support/                  Info.plist and entitlements
 ```
 
 The Xcode project uses folder-synced groups: add a file under `App/`,
 `Widgets/` or a test folder and it's in that target, with no project edits.
+
+## Using the app
+
+- **Today**: the date and weekday with ▶ (reads the brief aloud and shows
+  it as a card), the day's chips (school, preschool, the grandparents),
+  alerts, **Up next**, the lanes for the rest of today, weather, what the
+  kids need (tap to check off; resets daily), and birthdays.
+- **Tap any block** for "Why is this here?": the rule or built-in
+  attribution behind it, **Move to** (a rule for events with that exact
+  title, added at the top), **Make a Rule**, **Hide from Today**.
+- **Household** (the people button): People (photo, name, lane color,
+  group, other names, shared lane, birthday, own calendar), Rules (Mail-style,
+  with a live preview of the next 14 days), Schedule (blocks, school
+  calendars, care, pickup loop, check-in times, lane hours, home location
+  for weather; export/import household.json) and Calendars (what each
+  calendar on the phone is, missing ones, Reminders lists for needs).
+- Every save is validated first; a change that would break the rules is
+  refused with the reason.
 
 ## Editing the rules
 
@@ -93,9 +115,9 @@ with those capabilities: `PolarReailty.Today`, `PolarReailty.Today.widgets`,
 
 ## Milestones
 
-1. **Rules engine + tests** ← M1
-2. EventKit ingestion + lane model
-3. Main screen (lanes, weather, needs, birthdays)
-4. Spoken brief
+1. Rules engine + tests ✓
+2. EventKit ingestion, household store, Mail-style assignment rules ✓
+3. Main screen (lanes, Up next, weather, needs, birthdays) ✓
+4. Spoken brief and in-app Household editors ✓
 5. Check-in notifications (6:30 / 12:00 / 3:15)
 6. Lock Screen + Home Screen widgets
