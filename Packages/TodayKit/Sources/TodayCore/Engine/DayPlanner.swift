@@ -59,19 +59,26 @@ public struct DayPlanner: Sendable {
         return occurrence(of: block, on: date) != nil
     }
 
-    /// Who an event belongs to. On a shared calendar a name in the title wins
-    /// over the default owner; on a personal calendar named people join the owner.
+    /// Who an event belongs to by its calendar and title. People named in
+    /// the title get it (on someone's own calendar, alongside them);
+    /// otherwise the calendar's `ifNobodyNamed` decides. `.ask` returns
+    /// nobody, with `.unassigned`.
     public func owners(of title: String, on calendar: CalendarRule) -> (people: [PersonID], attribution: Attribution) {
         let named = attributor.people(namedIn: title)
-        switch calendar.role {
-        case .shared:
-            if named.isEmpty, let owner = calendar.defaultOwner {
-                return ([owner], .defaultOwner)
+        if !named.isEmpty {
+            if let owner = calendar.soleMember {
+                return ([owner] + named.filter { $0 != owner }, .calendarOwner)
             }
             return (named, .namedInTitle)
-        case .personal:
-            guard let owner = calendar.owner else { return (named, .namedInTitle) }
-            return ([owner] + named.filter { $0 != owner }, .calendarOwner)
+        }
+        switch calendar.ifNobodyNamed {
+        case .members:
+            if let owner = calendar.soleMember { return ([owner], .calendarOwner) }
+            return (calendar.memberIDs(in: rules.people), .calendarMembers)
+        case let .people(ids):
+            return (ids, .defaultOwner)
+        case .ask:
+            return ([], .unassigned)
         }
     }
 
@@ -125,6 +132,7 @@ private struct PlanBuilder {
 
     var items: [TimelineItem] = []
     var hidden: [TimelineItem] = []
+    var unassigned: [TimelineItem] = []
     var alerts: [PlanAlert] = []
 
     init(planner: DayPlanner, date: LocalDate) {
@@ -149,12 +157,13 @@ private struct PlanBuilder {
         let schools = schoolStatuses(occurrences)
         let loop = planLoop(occurrences)
         let careWindows = addCare(occurrences, loop: loop)
-        let unlisted = addEvents(input.events.filter { onDevice.contains($0.calendarTitle.lowercased()) })
+        let unlisted = addEvents(input.events.filter { onDevice.contains($0.calendarTitle.lowercased()) }, manual: input.manual)
         alertForSchools(schools, weekday: weekday)
         alertForConflicts(careWindows: careWindows, loop: loop)
 
         items.sort(by: Self.order)
         hidden.sort(by: Self.order)
+        unassigned.sort(by: Self.order)
         return DayPlan(
             date: date,
             clock: clock,
@@ -167,34 +176,30 @@ private struct PlanBuilder {
             needs: needs(occurrences, reminders: input.reminders),
             birthdays: birthdays(input.birthdays),
             hiddenItems: hidden,
+            unassigned: unassigned,
             missingCalendars: missing.map(\.title),
             unlistedCalendars: unlisted
         )
     }
 
-    /// The people whose day we can't see, and why. A personal calendar that
-    /// isn't on the device blanks its owner. A missing shared calendar blanks
-    /// everyone, because a name in a title can put its events on any lane,
-    /// and it alerts.
+    /// The people whose day we can't see, and why. A missing calendar blanks
+    /// its members. A missing everyone-calendar blanks every lane, because a
+    /// name in a title can put its events anywhere, and it alerts.
     private mutating func noDataReasons(_ missing: [CalendarRule]) -> [PersonID: String] {
         var reasons: [PersonID: String] = [:]
-        for calendar in missing where calendar.role == .personal {
-            if let owner = calendar.owner {
-                reasons[owner] = "the \"\(calendar.title)\" calendar isn't on this device"
+        // Own calendars first, so a person's reason names their own calendar.
+        for calendar in missing.sorted(by: { ($0.soleMember == nil ? 1 : 0) < ($1.soleMember == nil ? 1 : 0) }) {
+            let reason = "the \"\(calendar.title)\" calendar isn't on this device"
+            var blanked = calendar.memberIDs(in: rules.people)
+            if case let .people(ids) = calendar.ifNobodyNamed { blanked += ids }
+            for id in blanked where reasons[id] == nil {
+                reasons[id] = reason
             }
-        }
-        for calendar in missing {
-            switch calendar.role {
-            case .personal:
-                continue
-            case .shared:
-                for person in rules.people where reasons[person.id] == nil {
-                    reasons[person.id] = "the \"\(calendar.title)\" calendar isn't on this device"
-                }
+            if calendar.members == .everyone {
                 alerts.append(PlanAlert(
                     kind: .missingCalendar,
                     message: "The \(calendar.title) calendar isn't on this device, so its events are missing from every lane.",
-                    people: calendar.defaultOwner.map { [$0] } ?? []
+                    people: { if case let .people(ids) = calendar.ifNobodyNamed { return ids } else { return [] } }()
                 ))
             }
         }
@@ -376,16 +381,17 @@ private struct PlanBuilder {
 
     // MARK: Calendar events
 
-    /// Places each event by the assignment rules, then the built-in
-    /// attribution. Returns the calendars that had events nobody claimed.
-    private mutating func addEvents(_ events: [SourceEvent]) -> [String] {
+    /// Places each event by a manual pick, the assignment rules, then the
+    /// built-in attribution. Returns the calendars that had events nobody
+    /// claimed.
+    private mutating func addEvents(_ events: [SourceEvent], manual: ManualAssignments) -> [String] {
         let dayStart = clock.startOfDay(date)
         let dayEnd = clock.endOfDay(date)
         var unlisted = Set<String>()
         for event in events {
             let touchesDay = event.start < dayEnd && (event.end > dayStart || (event.end == event.start && event.start >= dayStart))
             guard touchesDay else { continue }
-            guard let assignment = planner.assignment(of: event) else {
+            guard let assignment = planner.assignment(of: event, manual: manual) else {
                 let listed = rules.calendars.contains {
                     $0.title.caseInsensitiveCompare(event.calendarTitle) == .orderedSame
                 }
@@ -406,10 +412,13 @@ private struct PlanBuilder {
                 importance: assignment.importance ?? rules.importance(of: .appointment),
                 origin: .calendar(title: calendarTitle, attribution: assignment.attribution),
                 detail: event.location,
-                rules: assignment.rules
+                rules: assignment.rules,
+                event: event
             )
             if assignment.hidden {
                 hidden.append(item)
+            } else if assignment.attribution == .unassigned {
+                unassigned.append(item)
             } else {
                 items.append(item)
             }

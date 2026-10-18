@@ -296,7 +296,7 @@ struct RulesV2Tests {
         let text = RulesWriter.text(Fixture.rules)
         let lines = text.components(separatedBy: "\n")
         #expect(lines[1] == "  \"$schema\": \"./household.schema.json\",")
-        #expect(lines[2] == "  \"schemaVersion\": 2,")
+        #expect(lines[2] == "  \"schemaVersion\": 3,")
         #expect(text.contains("{ \"id\": \"dad\", \"name\": \"Sam\", \"group\": \"parents\", \"aliases\": [\"Dad\"], \"color\": \"#5E9EFF\" }"))
         #expect(text.contains("\"name\": \"SERC → Jess\""))
         #expect(text.contains("{ \"date\": \"2026-10-23\", \"label\": \"Teacher in-service\" }"))

@@ -78,17 +78,23 @@ public struct BuiltInRule: Sendable, Equatable, Identifiable {
         var result = [
             BuiltInRule(id: "names", name: "Names in titles",
                         summary: "People named in a title get the event, on any calendar the rules list."),
-            BuiltInRule(id: "personal", name: "Personal calendars",
+            BuiltInRule(id: "personal", name: "Own calendars",
                         summary: "Events on someone's own calendar are theirs, plus anyone the title names."),
         ]
-        for calendar in planner.rules.calendars where calendar.role == .shared {
-            let owner = calendar.defaultOwner.map { planner.names([$0]) }
-            result.append(BuiltInRule(
-                id: "default:\(calendar.title)", name: "\(calendar.title) calendar default",
-                summary: owner.map { "Anything on \(calendar.title) that names nobody goes to \($0)." }
-                    ?? "Events on \(calendar.title) that name nobody aren't on any lane."
-            ))
+        for calendar in planner.rules.calendars where calendar.soleMember == nil {
+            let summary: String
+            switch calendar.ifNobodyNamed {
+            case let .people(ids):
+                summary = "Anything on \(calendar.title) that names nobody goes to \(planner.names(ids))."
+            case .members:
+                summary = "Anything on \(calendar.title) that names nobody goes to everyone it belongs to."
+            case .ask:
+                summary = "Events on \(calendar.title) that name nobody wait under Needs a person until you pick."
+            }
+            result.append(BuiltInRule(id: "default:\(calendar.title)", name: "\(calendar.title) calendar", summary: summary))
         }
+        result.append(BuiltInRule(id: "manual", name: "Picked by hand",
+                                  summary: "Anything you assign to one event (or all its repeats) beats every rule."))
         return result
     }
 }

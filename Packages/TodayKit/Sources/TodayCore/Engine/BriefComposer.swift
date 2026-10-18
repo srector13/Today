@@ -30,6 +30,8 @@ public struct BriefComposer: Sendable {
         var sentences: [String] = []
 
         switch kind {
+        case .morning where !isToday:
+            sentences.append("Here's \(DisplayFormat.weekdayName(plan.date.weekday)), \(DisplayFormat.monthDay(plan.date)).")
         case .morning:
             sentences.append("Good morning. It's \(DisplayFormat.weekdayName(plan.date.weekday)), \(DisplayFormat.monthDay(plan.date)).")
         case .midday:
@@ -59,7 +61,7 @@ public struct BriefComposer: Sendable {
 
         if let loop = plan.pickupLoop, clock.instant(plan.date, loop.end) > now || !isToday {
             sentences.append(loopSentence(loop, plan: plan, now: now, isToday: isToday))
-            if let weather, isToday,
+            if let weather,
                let chance = weather.rainChance(from: clock.instant(plan.date, loop.start), through: clock.instant(plan.date, loop.end)),
                chance >= WeatherSnapshot.likely {
                 sentences.append("Rain is likely at pickup, so grab the umbrella.")
@@ -86,6 +88,13 @@ public struct BriefComposer: Sendable {
                     item.people.isEmpty ? item.title : "\(item.title) for \(names(item.people))"
                 }.joined(separator: "; ") + ".")
             }
+        }
+
+        if !plan.unassigned.isEmpty {
+            let waiting = plan.unassigned.map { item in
+                item.isAllDay ? item.title : "\(item.title) at \(DisplayFormat.compactTime(clock.localTime(of: item.start)))"
+            }
+            sentences.append("\(waiting.count == 1 ? "One event needs" : "\(waiting.count) events need") a person: \(Self.spokenList(waiting)).")
         }
 
         let unknown = plan.lanes.filter { !$0.data.isKnown }

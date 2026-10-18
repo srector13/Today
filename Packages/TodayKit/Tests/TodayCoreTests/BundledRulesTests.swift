@@ -36,9 +36,14 @@ struct BundledRulesTests {
 
     @Test func sharedCalendarDefaultsToAGrandparent() throws {
         let rules = try RulesLoader.load(contentsOf: Self.url).rules
-        for calendar in rules.calendars where calendar.role == .shared {
-            let owner = try #require(calendar.defaultOwner.flatMap(rules.person))
-            #expect(owner.group == .grandparents)
+        for calendar in rules.calendars where calendar.members == .everyone {
+            guard case let .people(ids) = calendar.ifNobodyNamed else {
+                Issue.record("\(calendar.title) should name a default person")
+                continue
+            }
+            for id in ids {
+                #expect(try #require(rules.person(id)).group == .grandparents)
+            }
         }
     }
 

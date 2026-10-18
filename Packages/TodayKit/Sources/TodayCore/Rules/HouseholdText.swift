@@ -47,6 +47,24 @@ public struct HouseholdText: Sendable {
             + stops.joined(separator: " → ")
     }
 
+    /// "Sam's calendar", "Sam & Kate · nobody named → ask",
+    /// "Everyone · nobody named → Jess".
+    public func calendar(_ calendar: CalendarRule) -> String {
+        if let owner = calendar.soleMember, calendar.ifNobodyNamed == .members {
+            return "\(DisplayFormat.possessive(planner.names([owner]))) calendar"
+        }
+        let members: String
+        switch calendar.members {
+        case .everyone: members = "Everyone"
+        case let .people(ids): members = planner.names(ids)
+        }
+        switch calendar.ifNobodyNamed {
+        case .members: return "\(members) · nobody named → all of them"
+        case .ask: return "\(members) · nobody named → ask"
+        case let .people(ids): return "\(members) · nobody named → \(planner.names(ids))"
+        }
+    }
+
     /// "6:30 AM · 12:00 PM · 3:15 PM (Time Sensitive)".
     public func checkIns(_ checkIns: [CheckInRule]) -> String {
         checkIns.map { $0.at.twelveHour + ($0.timeSensitive ? " (Time Sensitive)" : "") }.joined(separator: " · ")
@@ -55,9 +73,15 @@ public struct HouseholdText: Sendable {
     /// The People list's second line: "Sam calendar · also "Dad"".
     public func person(_ person: Person) -> String {
         var parts: [String] = []
-        if let calendar = rules.personalCalendar(of: person.id) { parts.append("\(calendar) calendar") }
-        for calendar in rules.calendars where calendar.role == .shared && calendar.defaultOwner == person.id {
-            parts.append("\(calendar.title) calendar default")
+        for calendar in rules.calendars {
+            if calendar.soleMember == person.id {
+                parts.append("\(calendar.title) calendar")
+            } else if case let .people(ids) = calendar.members, ids.contains(person.id) {
+                parts.append("shares \(calendar.title)")
+            }
+            if case let .people(ids) = calendar.ifNobodyNamed, ids.contains(person.id) {
+                parts.append("\(calendar.title) calendar default")
+            }
         }
         let blocks = rules.blocks.filter { $0.who.contains(person.id) && $0.kind != .work }.map(\.title)
         if !blocks.isEmpty { parts.append(blocks.joined(separator: ", ")) }

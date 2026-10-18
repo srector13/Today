@@ -1,6 +1,6 @@
 {
   "$schema": "./household.schema.json",
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "timeZone": "America/Chicago",
 
   "todo": [
@@ -61,9 +61,9 @@
   ],
 
   "calendars": [
-    { "title": "<Family calendar>", "role": "shared", "defaultOwner": "grandpa" },
-    { "title": "<Your calendar>", "role": "personal", "owner": "dad" },
-    { "title": "<Wife's calendar>", "role": "personal", "owner": "mom" }
+    { "title": "<Family calendar>", "members": "everyone", "ifNobodyNamed": ["grandpa"] },
+    { "title": "<Your calendar>", "members": ["dad"] },
+    { "title": "<Wife's calendar>", "members": ["mom"] }
   ],
 
   "blocks": [

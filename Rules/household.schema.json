@@ -17,9 +17,10 @@
     "schemaVersion": {
       "enum": [
         1,
-        2
+        2,
+        3
       ],
-      "description": "2 adds lane colors, photos, reminder lists, birthdays and assignment rules. Version 1 files still load."
+      "description": "3 describes calendars by members (one person, several, or everyone) and who gets events that name nobody. 2 added lane colors, photos, reminder lists, birthdays and assignment rules. Older files still load."
     },
     "timeZone": {
       "type": "string",
@@ -282,20 +283,52 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "title",
-        "role"
+        "title"
       ],
       "properties": {
         "title": {
           "type": "string",
           "description": "The calendar's name exactly as iOS shows it (case doesn't matter)."
         },
+        "members": {
+          "oneOf": [
+            {
+              "const": "everyone"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/personId"
+              },
+              "minItems": 1
+            }
+          ],
+          "description": "Who the calendar belongs to: one person (their own calendar), several (a shared one), or \"everyone\" (the family calendar)."
+        },
+        "ifNobodyNamed": {
+          "oneOf": [
+            {
+              "enum": [
+                "members",
+                "ask"
+              ]
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/personId"
+              },
+              "minItems": 1
+            }
+          ],
+          "description": "Who gets an event whose title names nobody: \"members\" (default: everyone it belongs to), \"ask\" (it waits under Needs a person), or these people. Names in titles, assignment rules and manual picks come first."
+        },
         "role": {
           "enum": [
             "shared",
             "personal"
           ],
-          "description": "shared: an event belongs to defaultOwner unless its title names people, who then own it instead. personal: events belong to owner, plus anyone named."
+          "description": "Schema 1–2 form, still read: personal = members [owner]; shared = members \"everyone\", ifNobodyNamed [defaultOwner]."
         },
         "owner": {
           "$ref": "#/$defs/personId"
@@ -306,32 +339,45 @@
       },
       "oneOf": [
         {
-          "properties": {
-            "role": {
-              "const": "shared"
-            }
-          },
           "required": [
-            "defaultOwner"
+            "members"
           ],
           "not": {
-            "required": [
-              "owner"
+            "anyOf": [
+              {
+                "required": [
+                  "role"
+                ]
+              },
+              {
+                "required": [
+                  "owner"
+                ]
+              },
+              {
+                "required": [
+                  "defaultOwner"
+                ]
+              }
             ]
           }
         },
         {
-          "properties": {
-            "role": {
-              "const": "personal"
-            }
-          },
           "required": [
-            "owner"
+            "role"
           ],
           "not": {
-            "required": [
-              "defaultOwner"
+            "anyOf": [
+              {
+                "required": [
+                  "members"
+                ]
+              },
+              {
+                "required": [
+                  "ifNobodyNamed"
+                ]
+              }
             ]
           }
         }

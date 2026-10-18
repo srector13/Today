@@ -132,23 +132,27 @@ struct HouseholdEditingTests {
         #expect(refs.contains("the rule \"SERC → Jess\""))
         rules.removePerson("grandpa")
         #expect(rules.person("grandpa") == nil)
-        #expect(rules.calendars.first { $0.title == "Family" }?.defaultOwner == nil)
+        #expect(rules.calendarRule(titled: "Family")?.ifNobodyNamed == .ask)
         #expect(rules.care.first?.caregivers == ["grandma"])
         #expect(!rules.assignmentRules.contains { $0.id == "serc" })
         #expect(rules.references(to: "grandpa").isEmpty)
     }
 
-    @Test func calendarUses() {
+    @Test func calendarEditing() {
         var rules = rules
-        #expect(rules.use(ofCalendar: "family") == .shared(defaultOwner: "grandpa"))
-        #expect(rules.use(ofCalendar: "US Holidays") == .ignored)
-        rules.setUse(.personal(owner: "grandma"), ofCalendar: "Nana")
+        #expect(rules.calendarRule(titled: "family") == CalendarRule(title: "Family", members: .everyone, ifNobodyNamed: .people(["grandpa"])))
+        #expect(rules.calendarRule(titled: "US Holidays") == nil)
+        rules.setCalendar(CalendarRule(title: "Nana", members: .people(["grandma"])), titled: "Nana")
         #expect(rules.personalCalendar(of: "grandma") == "Nana")
         rules.setPersonalCalendar("Kate (work)", for: "mom")
         #expect(rules.personalCalendar(of: "mom") == "Kate (work)")
-        #expect(!rules.calendars.contains { $0.title == "Kate" })
-        rules.setUse(.ignored, ofCalendar: "Nana")
+        #expect(rules.calendarRule(titled: "Kate") == nil)
+        // A shared calendar gains a member instead of becoming someone's own.
+        rules.setPersonalCalendar("Us", for: "grandma")
+        #expect(rules.calendarRule(titled: "Us")?.members == .people(["dad", "mom", "grandma"]))
         #expect(rules.personalCalendar(of: "grandma") == nil)
+        rules.setCalendar(nil, titled: "Nana")
+        #expect(rules.calendarRule(titled: "Nana") == nil)
     }
 
     @Test func householdText() {
@@ -160,15 +164,19 @@ struct HouseholdEditingTests {
         #expect(text.loop(rules.pickupLoop!)
             == "Sam drives · weekdays, when school ends (5:00 PM without school) · School (Emma) → Grandparents' (Nora & Twins) → Home")
         #expect(text.checkIns(rules.checkIns) == "6:30 AM · 12:00 PM · 3:15 PM (Time Sensitive)")
-        #expect(text.person(rules.person("dad")!) == "Sam calendar · also \"Dad\"")
+        #expect(text.person(rules.person("dad")!) == "Sam calendar · shares Us · also \"Dad\"")
+        #expect(text.calendar(rules.calendarRule(titled: "Us")!) == "Sam & Kate · nobody named → ask")
+        #expect(text.calendar(rules.calendarRule(titled: "Family")!) == "Everyone · nobody named → Jess")
+        #expect(text.calendar(rules.calendarRule(titled: "Sam")!) == "Sam's calendar")
         #expect(text.person(rules.person("twinA")!) == "shares the Twins lane · also \"Twins\"")
         #expect(text.person(rules.person("grandpa")!) == "Family calendar default · also \"Grandpa\", \"Papa\"")
     }
 
     @Test func builtInRules() {
         let builtIns = BuiltInRule.all(Fixture.planner)
-        #expect(builtIns.map(\.name) == ["Names in titles", "Personal calendars", "Family calendar default"])
+        #expect(builtIns.map(\.name) == ["Names in titles", "Own calendars", "Family calendar", "Us calendar", "Picked by hand"])
         #expect(builtIns[2].summary == "Anything on Family that names nobody goes to Jess.")
+        #expect(builtIns[3].summary == "Events on Us that name nobody wait under Needs a person until you pick.")
     }
 }
 

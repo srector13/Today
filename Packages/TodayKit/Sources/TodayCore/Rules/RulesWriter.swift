@@ -89,9 +89,16 @@ public enum RulesWriter {
     }
 
     static func calendar(_ c: CalendarRule) -> JSONValue {
-        var m: [JSONMember] = [.init("title", .string(c.title)), .init("role", .string(c.role.rawValue))]
-        if let owner = c.owner { m.append(.init("owner", .string(owner))) }
-        if let owner = c.defaultOwner { m.append(.init("defaultOwner", .string(owner))) }
+        var m: [JSONMember] = [.init("title", .string(c.title))]
+        switch c.members {
+        case .everyone: m.append(.init("members", .string("everyone")))
+        case let .people(ids): m.append(.init("members", strings(ids)))
+        }
+        switch c.ifNobodyNamed {
+        case .members: break
+        case .ask: m.append(.init("ifNobodyNamed", .string("ask")))
+        case let .people(ids): m.append(.init("ifNobodyNamed", strings(ids)))
+        }
         return .object(m)
     }
 

@@ -13,10 +13,12 @@ public struct SourceEvent: Sendable, Equatable {
     public var isAllDay: Bool
     public var location: String?
     public var notes: String?
+    /// One occurrence of a repeating event; every occurrence shares `id`.
+    public var isRecurring: Bool
 
     public init(
         id: String, calendarTitle: String, title: String, start: Date, end: Date,
-        isAllDay: Bool = false, location: String? = nil, notes: String? = nil
+        isAllDay: Bool = false, location: String? = nil, notes: String? = nil, isRecurring: Bool = false
     ) {
         self.id = id
         self.calendarTitle = calendarTitle
@@ -26,6 +28,7 @@ public struct SourceEvent: Sendable, Equatable {
         self.isAllDay = isAllDay
         self.location = location
         self.notes = notes
+        self.isRecurring = isRecurring
     }
 }
 
@@ -68,35 +71,49 @@ public struct DayInput: Sendable {
     public var calendarsOnDevice: Set<String>
     public var reminders: [SourceReminder]
     public var birthdays: [SourceBirthday]
+    /// People picked by hand for particular events.
+    public var manual: ManualAssignments
 
     public init(
         events: [SourceEvent] = [], calendarsOnDevice: Set<String>,
-        reminders: [SourceReminder] = [], birthdays: [SourceBirthday] = []
+        reminders: [SourceReminder] = [], birthdays: [SourceBirthday] = [],
+        manual: ManualAssignments = ManualAssignments()
     ) {
         self.events = events
         self.calendarsOnDevice = calendarsOnDevice
         self.reminders = reminders
         self.birthdays = birthdays
+        self.manual = manual
     }
 }
 
 /// Why an event landed on the lanes it did.
 public enum Attribution: Sendable, Equatable {
-    /// A personal calendar's owner.
+    /// Someone's own (one-member) calendar.
     case calendarOwner
-    /// A shared calendar's default owner: the title named nobody.
+    /// A calendar several people share, and the title named nobody.
+    case calendarMembers
+    /// The calendar's choice for events that name nobody (the family
+    /// calendar's default, Jess).
     case defaultOwner
-    /// People named in the title (on a shared calendar, instead of the default).
+    /// People named in the title.
     case namedInTitle
     /// One of the household's assignment rules, by name.
     case rule(String)
+    /// Picked by hand for this event (or every repeat of it).
+    case manual
+    /// The calendar asks who an event is for, and nobody has picked yet.
+    case unassigned
 
     public var label: String {
         switch self {
         case .calendarOwner: "calendarOwner"
+        case .calendarMembers: "calendarMembers"
         case .defaultOwner: "defaultOwner"
         case .namedInTitle: "namedInTitle"
         case let .rule(name): "rule \"\(name)\""
+        case .manual: "manual"
+        case .unassigned: "unassigned"
         }
     }
 }
@@ -122,6 +139,8 @@ public struct TimelineItem: Sendable, Equatable, Identifiable {
     public let detail: String?
     /// Every assignment rule that matched the event, for "why is this here?".
     public var rules: [String] = []
+    /// The calendar event behind it, for picking its people by hand.
+    public var event: SourceEvent? = nil
 
     public func overlaps(_ start: Date, _ end: Date) -> Bool {
         self.start < end && self.end > start
@@ -129,7 +148,8 @@ public struct TimelineItem: Sendable, Equatable, Identifiable {
 
     func with(people: [PersonID]) -> TimelineItem {
         TimelineItem(id: id, title: title, kind: kind, start: start, end: end, isAllDay: isAllDay,
-                     people: people, importance: importance, origin: origin, detail: detail, rules: rules)
+                     people: people, importance: importance, origin: origin, detail: detail, rules: rules,
+                     event: event)
     }
 }
 
@@ -265,6 +285,8 @@ public struct DayPlan: Sendable {
     public let birthdays: [UpcomingBirthday]
     /// Events an assignment rule hid, for a "show hidden" view.
     public let hiddenItems: [TimelineItem]
+    /// Events on a calendar that asks who they're for, waiting for a pick.
+    public let unassigned: [TimelineItem]
     /// Calendars the rules list that aren't on this device.
     public let missingCalendars: [String]
     /// Calendars with events today that the rules don't list, so no one owns them.

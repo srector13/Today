@@ -39,8 +39,11 @@ extension HouseholdRules {
     /// Where `id` is used, in words, for "Remove from Household".
     public func references(to id: PersonID) -> [String] {
         var found: [String] = []
-        for calendar in calendars where calendar.owner == id || calendar.defaultOwner == id {
-            found.append("the \(calendar.title) calendar")
+        for calendar in calendars {
+            var named = false
+            if case let .people(ids) = calendar.members, ids.contains(id) { named = true }
+            if case let .people(ids) = calendar.ifNobodyNamed, ids.contains(id) { named = true }
+            if named { found.append("the \(calendar.title) calendar") }
         }
         for block in blocks where block.who.contains(id) { found.append("the \(block.title) block") }
         for rule in care where rule.caregivers.contains(id) || rule.kids.contains(id) {
@@ -65,8 +68,15 @@ extension HouseholdRules {
         people.removeAll { $0.id == id }
         calendars = calendars.compactMap { calendar in
             var c = calendar
-            if c.owner == id { return nil }
-            if c.defaultOwner == id { c.defaultOwner = nil }
+            if case let .people(ids) = c.members {
+                let rest = ids.filter { $0 != id }
+                if rest.isEmpty { return nil }
+                c.members = .people(rest)
+            }
+            if case let .people(ids) = c.ifNobodyNamed {
+                let rest = ids.filter { $0 != id }
+                c.ifNobodyNamed = rest.isEmpty ? .ask : .people(rest)
+            }
             return c
         }
         blocks = blocks.compactMap { block in
@@ -153,31 +163,14 @@ extension HouseholdRules {
 
     // MARK: Calendars
 
-    /// What a device calendar is to the household.
-    public enum CalendarUse: Sendable, Equatable {
-        case ignored
-        case shared(defaultOwner: PersonID?)
-        case personal(owner: PersonID)
+    /// The rule for a device calendar, matched ignoring case.
+    public func calendarRule(titled title: String) -> CalendarRule? {
+        calendars.first { $0.title.caseInsensitiveCompare(title) == .orderedSame }
     }
 
-    public func use(ofCalendar title: String) -> CalendarUse {
-        guard let rule = calendars.first(where: { $0.title.caseInsensitiveCompare(title) == .orderedSame }) else {
-            return .ignored
-        }
-        switch rule.role {
-        case .shared: return .shared(defaultOwner: rule.defaultOwner)
-        case .personal: return rule.owner.map { .personal(owner: $0) } ?? .ignored
-        }
-    }
-
-    public mutating func setUse(_ use: CalendarUse, ofCalendar title: String) {
+    /// Replaces (or adds) the rule for a calendar; `nil` stops using it.
+    public mutating func setCalendar(_ rule: CalendarRule?, titled title: String) {
         let index = calendars.firstIndex { $0.title.caseInsensitiveCompare(title) == .orderedSame }
-        let rule: CalendarRule?
-        switch use {
-        case .ignored: rule = nil
-        case let .shared(owner): rule = CalendarRule(title: title, role: .shared, defaultOwner: owner)
-        case let .personal(owner): rule = CalendarRule(title: title, role: .personal, owner: owner)
-        }
         switch (index, rule) {
         case let (index?, rule?): calendars[index] = rule
         case let (index?, nil): calendars.remove(at: index)
@@ -186,17 +179,26 @@ extension HouseholdRules {
         }
     }
 
-    /// The person's own calendar, if one is listed.
+    /// The person's own (one-member) calendar, if one is listed.
     public func personalCalendar(of id: PersonID) -> String? {
-        calendars.first { $0.role == .personal && $0.owner == id }?.title
+        calendars.first { $0.soleMember == id }?.title
     }
 
-    /// Makes `title` the person's own calendar (or none), leaving other
-    /// people's calendars alone.
+    /// Makes `title` the person's calendar, or none. A calendar several
+    /// people share gains them as a member instead of losing the others.
     public mutating func setPersonalCalendar(_ title: String?, for id: PersonID) {
-        calendars.removeAll { $0.role == .personal && $0.owner == id }
-        if let title {
-            setUse(.personal(owner: id), ofCalendar: title)
+        calendars.removeAll { $0.soleMember == id && $0.title.caseInsensitiveCompare(title ?? "") != .orderedSame }
+        guard let title else { return }
+        if var rule = calendarRule(titled: title) {
+            switch rule.members {
+            case .everyone:
+                return
+            case let .people(ids):
+                if ids.isEmpty || !ids.contains(id) { rule.members = .people(ids + [id]) }
+            }
+            setCalendar(rule, titled: title)
+        } else {
+            calendars.append(CalendarRule(title: title, members: .people([id])))
         }
     }
 }

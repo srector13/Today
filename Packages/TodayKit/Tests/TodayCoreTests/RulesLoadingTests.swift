@@ -101,15 +101,30 @@ struct RulesLoadingTests {
         #expect(issues.contains { $0.message.contains("\"twinB\" is in care until the pickup loop") })
     }
 
-    @Test func sharedCalendarNeedsADefaultOwner() {
+    @Test func calendarMembersCantBeEmpty() {
         let issues = errors { rules in
-            rules["calendars"] = [["title": "Family", "role": "shared"]]
+            rules["calendars"] = [["title": "Us", "members": [String]()]]
         }
-        #expect(issues.contains { $0.path == "calendars[0]" && $0.message.contains("defaultOwner") })
+        #expect(issues.contains { $0.path == "calendars[0].members" })
+    }
+
+    @Test func calendarMembersMustExist() {
+        let issues = errors { rules in
+            rules["calendars"] = [["title": "Us", "members": ["dad", "mum"], "ifNobodyNamed": ["grandpaa"]]]
+        }
+        #expect(issues.contains { $0.path == "calendars[0].members[1]" && $0.message.contains("\"mom\"") })
+        #expect(issues.contains { $0.path == "calendars[0].ifNobodyNamed[0]" })
+    }
+
+    @Test func oldAndNewCalendarKeysDontMix() {
+        let issues = errors { rules in
+            rules["calendars"] = [["title": "Us", "role": "shared", "members": "everyone"]]
+        }
+        #expect(issues.contains { $0.message.contains("not both") })
     }
 
     @Test func wrongSchemaVersion() {
-        let issues = errors { $0["schemaVersion"] = 3 }
+        let issues = errors { $0["schemaVersion"] = 4 }
         #expect(issues.contains { $0.path == "schemaVersion" })
     }
 

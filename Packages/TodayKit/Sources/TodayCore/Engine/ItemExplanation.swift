@@ -32,6 +32,12 @@ extension DayPlanner {
                 reasons.append("The title names nobody, so the \(title) calendar's default, \(owner), gets it.")
             case .namedInTitle:
                 reasons.append("The title names \(names(attributor.people(namedIn: item.title))).")
+            case .calendarMembers:
+                reasons.append("It's on the \(title) calendar, which \(names(item.people)) share, and the title names nobody.")
+            case .manual:
+                reasons.append("Picked by hand for this event.")
+            case .unassigned:
+                reasons.append("The \(title) calendar asks who each event is for. Pick someone below.")
             case .calendarOwner:
                 let owner = item.people.first
                 reasons.append("It's on \(DisplayFormat.possessive(owner.map { names([$0]) } ?? "its owner")) own calendar.")
@@ -57,6 +63,7 @@ extension DayPlanner {
 
     /// "On Jess's lane", "On Sam's and Emma's lanes".
     func lanesHeadline(_ people: [PersonID]) -> String {
+        if people.isEmpty { return "Needs a person" }
         var labels: [(label: String, plural: Bool)] = []
         for id in people {
             guard let person = rules.person(id) else { continue }

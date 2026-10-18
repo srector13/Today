@@ -91,6 +91,33 @@ public struct HouseholdStore: Sendable {
         try read(rulesURL)
     }
 
+    // MARK: Manual assignments
+
+    var assignmentsURL: URL { directory.appendingPathComponent("assignments.json") }
+
+    /// People picked by hand for particular events; empty if none yet or
+    /// the file can't be read.
+    public func loadAssignments() -> ManualAssignments {
+        guard let data = try? Data(contentsOf: assignmentsURL),
+              let assignments = try? JSONDecoder().decode(ManualAssignments.self, from: data) else {
+            return ManualAssignments()
+        }
+        return assignments
+    }
+
+    public func saveAssignments(_ assignments: ManualAssignments) throws(RulesError) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data: Data
+        do {
+            data = try encoder.encode(assignments)
+        } catch {
+            throw Self.failure("Couldn't save your picks: \(error.localizedDescription)")
+        }
+        try ensureDirectory()
+        try write(data, to: assignmentsURL)
+    }
+
     // MARK: Photos
 
     /// Saves a person's photo (already cropped and compressed by the app)

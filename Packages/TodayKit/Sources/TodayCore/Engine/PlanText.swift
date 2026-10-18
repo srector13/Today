@@ -74,6 +74,13 @@ public enum PlanText {
                 }
             }
         }
+        if !plan.unassigned.isEmpty {
+            out.append("")
+            out.append("Needs a person")
+            for item in plan.unassigned {
+                out.append("    \(itemLine(item, plan: plan, lane: nil, planner: planner))")
+            }
+        }
         if !plan.hiddenItems.isEmpty {
             out.append("")
             out.append("Hidden by rules")

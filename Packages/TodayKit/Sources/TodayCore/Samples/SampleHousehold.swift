@@ -13,7 +13,8 @@ import Foundation
 ///   reminder becomes Emma's need.
 /// - Wed 2026-10-21: school only; a work call that overlaps the pickup loop;
 ///   a possessive alias ("Nana's"); the SERC rule moves an event off Sam's
-///   own calendar onto Jess's lane.
+///   own calendar onto Jess's lane; an event on "Us", the calendar Sam and
+///   Kate share, which asks who each unnamed event is for.
 /// - Sat 2026-10-24: weekend; an event naming two kids, a trip naming both
 ///   grandparents, an event on a calendar the rules don't list, and Aunt
 ///   Jo's birthday from the device's Birthdays calendar.
@@ -32,7 +33,7 @@ public enum SampleHousehold {
     /// The calendars the seeded device can read on `date`. Tuesday is the
     /// "wife's calendar isn't shared to this phone" case.
     public static func calendarsOnDevice(on date: LocalDate) -> Set<String> {
-        date == tuesday ? ["Family", "Sam", "US Holidays"] : ["Family", "Sam", "Kate", "US Holidays"]
+        date == tuesday ? ["Family", "Sam", "Us", "US Holidays"] : ["Family", "Sam", "Kate", "Us", "US Holidays"]
     }
 
     public static func input(on date: LocalDate) -> DayInput {
@@ -98,8 +99,12 @@ public enum SampleHousehold {
     public static func events(on date: LocalDate) -> [SourceEvent] {
         let clock = HouseholdClock.chicago
         func at(_ hhmm: String) -> Date { clock.instant(date, LocalTime(hhmm)!) }
-        func timed(_ id: String, _ calendar: String, _ title: String, _ start: String, _ end: String, location: String? = nil) -> SourceEvent {
-            SourceEvent(id: "\(date.iso)-\(id)", calendarTitle: calendar, title: title, start: at(start), end: at(end), location: location)
+        func timed(
+            _ id: String, _ calendar: String, _ title: String, _ start: String, _ end: String,
+            location: String? = nil, repeating: Bool = false
+        ) -> SourceEvent {
+            SourceEvent(id: "\(date.iso)-\(id)", calendarTitle: calendar, title: title, start: at(start), end: at(end),
+                        location: location, isRecurring: repeating)
         }
         func allDay(_ id: String, _ calendar: String, _ title: String) -> SourceEvent {
             SourceEvent(id: "\(date.iso)-\(id)", calendarTitle: calendar, title: title,
@@ -111,7 +116,7 @@ public enum SampleHousehold {
             return [
                 allDay("picture", "Family", "Picture day - Emma"),
                 timed("dentist", "Family", "Dentist", "10:00", "11:00"),
-                timed("swim", "Family", "Swim lesson (Emma)", "17:30", "18:00"),
+                timed("swim", "Family", "Swim lesson (Emma)", "17:30", "18:00", repeating: true),
                 timed("standup", "Sam", "Team standup", "09:00", "09:15"),
                 timed("busy", "Sam", "Busy", "13:00", "14:00"),
                 timed("serc", "Family", "SERC planning", "19:00", "20:30", location: "Library annex"),
@@ -124,6 +129,7 @@ public enum SampleHousehold {
                 timed("serc", "Sam", "SERC board call", "18:30", "19:30"),
                 timed("client", "Kate", "Client review", "10:00", "11:30"),
                 timed("yoga", "Kate", "Yoga", "18:00", "19:00"),
+                timed("conference", "Us", "Parent-teacher conference", "17:15", "17:45"),
             ]
         case saturday:
             return [
@@ -140,7 +146,7 @@ public enum SampleHousehold {
 
     public static let rulesJSON = """
     {
-      "schemaVersion": 2,
+      "schemaVersion": 3,
       "timeZone": "America/Chicago",
       "dayWindow": { "start": "06:00", "end": "21:00" },
       "people": [
@@ -156,9 +162,10 @@ public enum SampleHousehold {
         { "id": "grandma", "name": "Grandma", "group": "grandparents", "aliases": ["Nana"], "color": "#FFD34E" }
       ],
       "calendars": [
-        { "title": "Family", "role": "shared",   "defaultOwner": "grandpa" },
-        { "title": "Sam",    "role": "personal", "owner": "dad" },
-        { "title": "Kate",   "role": "personal", "owner": "mom" }
+        { "title": "Family", "members": "everyone",      "ifNobodyNamed": ["grandpa"] },
+        { "title": "Sam",    "members": ["dad"] },
+        { "title": "Kate",   "members": ["mom"] },
+        { "title": "Us",     "members": ["dad", "mom"], "ifNobodyNamed": "ask" }
       ],
       "blocks": [
         { "id": "work", "title": "Work", "kind": "work", "who": ["dad"],

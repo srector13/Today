@@ -6,7 +6,7 @@ enum Fixture {
     static let rules = SampleHousehold.rules
     static let planner = try! DayPlanner(rules: rules)
     static let clock = HouseholdClock.chicago
-    static let allCalendars: Set<String> = ["Family", "Sam", "Kate"]
+    static let allCalendars: Set<String> = ["Family", "Sam", "Kate", "Us"]
 
     static func date(_ iso: String) -> LocalDate {
         LocalDate(iso: iso)!

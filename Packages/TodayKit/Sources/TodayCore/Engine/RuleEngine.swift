@@ -104,11 +104,19 @@ public struct RulePreviewMatch: Sendable, Equatable {
 }
 
 extension DayPlanner {
-    /// Who `event` belongs to: assignment rules first, then the built-in
-    /// attribution for calendars the rules list. `nil` when nobody claims it
-    /// (a calendar the rules don't list, and no rule assigns it).
-    public func assignment(of event: SourceEvent, using engine: RuleEngine? = nil) -> EventAssignment? {
+    /// Who `event` belongs to: a manual pick first, then assignment rules,
+    /// then the built-in attribution for calendars the rules list. `nil` when
+    /// nobody claims it (a calendar the rules don't list, and no rule
+    /// assigns it). An event on a calendar that asks comes back with nobody
+    /// and `.unassigned`.
+    public func assignment(
+        of event: SourceEvent, manual: ManualAssignments = ManualAssignments(), using engine: RuleEngine? = nil
+    ) -> EventAssignment? {
         let outcome = (engine ?? ruleEngine).evaluate(event)
+        if let pick = manual.entry(for: event, on: clock.localDate(of: event.start)) {
+            return EventAssignment(people: pick.people, attribution: .manual, hidden: false,
+                                   importance: outcome.importance, rules: outcome.matched)
+        }
         let calendar = rules.calendars.first {
             $0.title.caseInsensitiveCompare(event.calendarTitle) == .orderedSame
         }
@@ -128,7 +136,11 @@ extension DayPlanner {
         for id in outcome.included where !people.contains(id) {
             people.append(id)
         }
-        guard !people.isEmpty || outcome.hidden else { return nil }
+        if !people.isEmpty, attribution == .unassigned {
+            // A rule added people to an event that would otherwise wait for a pick.
+            attribution = .rule(outcome.matched.last ?? "")
+        }
+        guard !people.isEmpty || outcome.hidden || attribution == .unassigned else { return nil }
         return EventAssignment(people: people, attribution: attribution, hidden: outcome.hidden,
                                importance: outcome.importance, rules: outcome.matched)
     }

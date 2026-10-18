@@ -150,24 +150,23 @@ private struct Validation {
             if !titles.insert(calendar.title.lowercased()).inserted {
                 error("\(path).title", "Calendar \"\(calendar.title)\" is listed twice.")
             }
-            switch calendar.role {
-            case .shared:
-                if let owner = calendar.defaultOwner {
-                    checkPerson(owner, at: "\(path).defaultOwner")
-                } else {
-                    error(path, "A shared calendar needs a \"defaultOwner\": who an event belongs to when its title names nobody.")
+            switch calendar.members {
+            case .everyone:
+                break
+            case let .people(ids):
+                if ids.isEmpty {
+                    error("\(path).members", "List at least one person, or write \"everyone\".")
                 }
-                if calendar.owner != nil {
-                    error("\(path).owner", "A shared calendar has a \"defaultOwner\", not an \"owner\".")
+                for (j, id) in ids.enumerated() {
+                    checkPerson(id, at: "\(path).members[\(j)]")
                 }
-            case .personal:
-                if let owner = calendar.owner {
-                    checkPerson(owner, at: "\(path).owner")
-                } else {
-                    error(path, "A personal calendar needs an \"owner\".")
+            }
+            if case let .people(ids) = calendar.ifNobodyNamed {
+                if ids.isEmpty {
+                    error("\(path).ifNobodyNamed", "List at least one person, or write \"members\" or \"ask\".")
                 }
-                if calendar.defaultOwner != nil {
-                    error("\(path).defaultOwner", "A personal calendar has an \"owner\", not a \"defaultOwner\".")
+                for (j, id) in ids.enumerated() {
+                    checkPerson(id, at: "\(path).ifNobodyNamed[\(j)]")
                 }
             }
         }

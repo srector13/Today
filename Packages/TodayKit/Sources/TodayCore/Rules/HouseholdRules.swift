@@ -36,10 +36,11 @@ public struct HouseholdRules: Sendable, Equatable {
     /// Screen. Kinds the file leaves out keep `Importance.defaults`.
     public var importance: [ItemKind: Importance]
 
-    /// The version this app writes. Version 1 files (M1: no colors, photos
-    /// or assignment rules) still load.
-    public static let currentSchemaVersion = 2
-    public static let supportedSchemaVersions = 1...2
+    /// The version this app writes. Older files still load: version 1 has
+    /// no colors, photos or assignment rules; versions 1–2 describe calendars
+    /// with `role`/`owner`/`defaultOwner` instead of `members`.
+    public static let currentSchemaVersion = 3
+    public static let supportedSchemaVersions = 1...3
 
     public func person(_ id: PersonID) -> Person? {
         people.first { $0.id == id }
@@ -172,41 +173,129 @@ extension Person: Decodable {
 
 // MARK: - Calendars
 
-public enum CalendarRole: String, Codable, Sendable {
-    /// A family calendar: an event belongs to `defaultOwner` unless people
-    /// are named in its title, and then it belongs to them instead.
-    case shared
-    /// One person's calendar: events belong to `owner`, plus anyone named.
-    case personal
+/// Who a calendar belongs to.
+public enum CalendarMembers: Sendable, Equatable {
+    /// The whole household, like a family calendar.
+    case everyone
+    /// These people: one for someone's own calendar, more for a shared one.
+    case people([PersonID])
 }
 
+/// Who gets an event whose title names nobody, when no rule or manual
+/// choice has decided.
+public enum UnnamedEvents: Sendable, Equatable {
+    /// Everyone the calendar belongs to.
+    case members
+    /// These people, e.g. the family calendar's default (Jess).
+    case people([PersonID])
+    /// Nobody until someone picks: it waits under "Needs a person".
+    case ask
+}
+
+/// A calendar the household uses. A name in an event's title always wins;
+/// otherwise `ifNobodyNamed` decides. Assignment rules and manual choices
+/// come first.
 public struct CalendarRule: Sendable, Equatable {
     /// The calendar's name as iOS shows it.
     public var title: String
-    public var role: CalendarRole
-    public var owner: PersonID?
-    public var defaultOwner: PersonID?
+    public var members: CalendarMembers
+    public var ifNobodyNamed: UnnamedEvents
 
-    public init(title: String, role: CalendarRole, owner: PersonID? = nil, defaultOwner: PersonID? = nil) {
+    public init(title: String, members: CalendarMembers, ifNobodyNamed: UnnamedEvents = .members) {
         self.title = title
-        self.role = role
-        self.owner = owner
-        self.defaultOwner = defaultOwner
+        self.members = members
+        self.ifNobodyNamed = ifNobodyNamed
+    }
+
+    /// The member ids, with `.everyone` expanded to the household.
+    public func memberIDs(in people: [Person]) -> [PersonID] {
+        switch members {
+        case .everyone: people.map(\.id)
+        case let .people(ids): ids
+        }
+    }
+
+    /// The one person whose own calendar this is, if it has exactly one member.
+    public var soleMember: PersonID? {
+        if case let .people(ids) = members, ids.count == 1 { return ids[0] }
+        return nil
     }
 }
 
 extension CalendarRule: Decodable {
+    /// `members`/`ifNobodyNamed` since schema 3; `role`/`owner`/`defaultOwner`
+    /// (schemas 1–2) still load: a personal calendar is one member's, a shared
+    /// one is everyone's with its default owner for unnamed events.
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case title, role, owner, defaultOwner
+        case title, members, ifNobodyNamed, role, owner, defaultOwner
+    }
+
+    enum LegacyRole: String, Decodable {
+        case shared, personal
     }
 
     public init(from decoder: any Decoder) throws {
         try decoder.rejectUnknownKeys(CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         title = try c.decode(String.self, forKey: .title)
-        role = try c.decode(CalendarRole.self, forKey: .role)
-        owner = try c.decodeIfPresent(PersonID.self, forKey: .owner)
-        defaultOwner = try c.decodeIfPresent(PersonID.self, forKey: .defaultOwner)
+        if let role = try c.decodeIfPresent(LegacyRole.self, forKey: .role) {
+            guard !c.contains(.members), !c.contains(.ifNobodyNamed) else {
+                throw DecodingError.dataCorrupted(.init(
+                    codingPath: decoder.codingPath + [CodingKeys.role],
+                    debugDescription: "Use \"members\" and \"ifNobodyNamed\", or the older \"role\", not both."
+                ))
+            }
+            switch role {
+            case .personal:
+                let owner = try c.decode(PersonID.self, forKey: .owner)
+                members = .people([owner])
+                ifNobodyNamed = .members
+            case .shared:
+                members = .everyone
+                ifNobodyNamed = try c.decodeIfPresent(PersonID.self, forKey: .defaultOwner).map { .people([$0]) } ?? .ask
+            }
+            return
+        }
+        members = try c.decode(CalendarMembers.self, forKey: .members)
+        ifNobodyNamed = try c.decodeIfPresent(UnnamedEvents.self, forKey: .ifNobodyNamed) ?? .members
+    }
+}
+
+extension CalendarMembers: Decodable {
+    /// `"everyone"` or a list of person ids.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let word = try? container.decode(String.self) {
+            guard word == "everyone" else {
+                throw DecodingError.dataCorrupted(.init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Write \"everyone\" or a list of people, e.g. [\"dad\", \"mom\"]."
+                ))
+            }
+            self = .everyone
+        } else {
+            self = .people(try container.decode([PersonID].self))
+        }
+    }
+}
+
+extension UnnamedEvents: Decodable {
+    /// `"members"`, `"ask"` or a list of person ids.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let word = try? container.decode(String.self) {
+            switch word {
+            case "members": self = .members
+            case "ask": self = .ask
+            default:
+                throw DecodingError.dataCorrupted(.init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Write \"members\", \"ask\" or a list of people, e.g. [\"grandpa\"]."
+                ))
+            }
+        } else {
+            self = .people(try container.decode([PersonID].self))
+        }
     }
 }
 

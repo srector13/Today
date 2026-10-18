@@ -170,11 +170,13 @@ public enum EventKitMapping {
             let dates = allDayDates(of: event, clock: clock)
             return SourceEvent(id: id, calendarTitle: calendar, title: event.title ?? "",
                                start: clock.startOfDay(dates.first), end: clock.endOfDay(dates.last),
-                               isAllDay: true, location: event.location, notes: event.notes)
+                               isAllDay: true, location: event.location, notes: event.notes,
+                               isRecurring: event.hasRecurrenceRules)
         }
         return SourceEvent(id: id, calendarTitle: calendar, title: event.title ?? "",
                            start: event.startDate, end: event.endDate,
-                           isAllDay: false, location: event.location, notes: event.notes)
+                           isAllDay: false, location: event.location, notes: event.notes,
+                           isRecurring: event.hasRecurrenceRules)
     }
 
     /// The first and last day of an all-day event, in household dates

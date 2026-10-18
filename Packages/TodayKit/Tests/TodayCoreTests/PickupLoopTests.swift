@@ -172,7 +172,7 @@ struct LaneAndNeedsTests {
     }
 
     @Test func missingPersonalCalendarIsNoDataNotFree() {
-        let plan = Fixture.plan("2026-10-20", calendars: ["Family", "Sam"])
+        let plan = Fixture.plan("2026-10-20", calendars: ["Family", "Sam", "Us"])
         let kate = plan.lane("Kate")
         #expect(kate?.data == .noData(reason: "the \"Kate\" calendar isn't on this device"))
         #expect(plan.missingCalendars == ["Kate"])
