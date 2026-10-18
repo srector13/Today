@@ -29,12 +29,13 @@ public struct NextUp: Sendable, Equatable {
                       loop: item.kind == .pickupLoop ? plan.pickupLoop : nil)
     }
 
-    /// "3:30 PM · in 50 min · Sam drives", "7:00 PM · in 4 hr · Jess".
-    public func subtitle(planner: DayPlanner, now: Date) -> String {
+    /// "3:30 PM · in 50 min · Sam drives", "7:00 PM · in 4 hr · Jess";
+    /// without "in …" for another day (`relative: false`).
+    public func subtitle(planner: DayPlanner, now: Date, relative: Bool = true) -> String {
         let clock = planner.clock
         let start = clock.localTime(of: item.start)
-        var parts = [isUnderway ? "Now until \(clock.localTime(of: item.end).twelveHour)" : start.twelveHour]
-        if !isUnderway { parts.append(DisplayFormat.until(item.start, from: now)) }
+        var parts = [isUnderway && relative ? "Now until \(clock.localTime(of: item.end).twelveHour)" : start.twelveHour]
+        if !isUnderway, relative { parts.append(DisplayFormat.until(item.start, from: now)) }
         if let loop {
             parts.append("\(planner.names([loop.driver])) drives")
         } else if !item.people.isEmpty {

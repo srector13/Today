@@ -85,7 +85,7 @@ struct TodayScreen: View {
 extension EnvironmentValues {
     /// Whether this day's page is the one on screen. Neighbouring pages stay
     /// loaded, so the UI tests' identifiers are only given to this one.
-    @Entry var isCurrentPage = true
+    @Entry var isCurrentPage: Bool = true
 }
 
 /// An accessibility identifier that only the page on screen carries.

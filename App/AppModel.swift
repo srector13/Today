@@ -68,7 +68,7 @@ final class AppModel {
     private(set) var weatherLegalPage: URL?
     private(set) var deviceCalendars: [DeviceCalendar] = []
     private(set) var deviceReminderLists: [String] = []
-    private(set) var doneNeeds: [LocalDate: Set<String>] = [:]
+    private(set) var doneNeedsByDay: [LocalDate: Set<String>] = [:]
     /// The day on screen.
     var selectedDate: LocalDate
 
@@ -114,7 +114,7 @@ final class AppModel {
     func plan(on date: LocalDate) -> DayPlan? { days[date]?.plan }
     func weather(on date: LocalDate) -> WeatherSnapshot? { days[date]?.weather }
     func weatherState(on date: LocalDate) -> WeatherState { days[date]?.weatherState ?? .idle }
-    func doneNeeds(on date: LocalDate) -> Set<String> { doneNeeds[date] ?? [] }
+    func doneNeeds(on date: LocalDate) -> Set<String> { doneNeedsByDay[date] ?? [] }
 
     // MARK: Loading
 
@@ -144,7 +144,7 @@ final class AppModel {
         manual.prune(before: today.adding(days: -Self.pastDays))
         if !isSeeded {
             selectedDate = today
-            doneNeeds = NeedsLog.load()
+            doneNeedsByDay = NeedsLog.load()
         }
         await refresh()
     }
@@ -288,8 +288,8 @@ final class AppModel {
         } else {
             done.insert(key)
         }
-        doneNeeds[date] = done
-        if !isSeeded { NeedsLog.save(doneNeeds, keepingSince: today.adding(days: -14)) }
+        doneNeedsByDay[date] = done
+        if !isSeeded { NeedsLog.save(doneNeedsByDay, keepingSince: today.adding(days: -14)) }
     }
 
     // MARK: Manual picks

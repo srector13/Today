@@ -56,7 +56,7 @@ struct UpNextCard: View {
                         .font(.title2.bold())
                         .foregroundStyle(.white)
                         .pageIdentifier("upnext.title")
-                    Text(next.subtitle(planner: planner, now: now))
+                    Text(next.subtitle(planner: planner, now: now, relative: title == "Up next"))
                         .font(.subheadline)
                         .foregroundStyle(Theme.secondary)
                 }

@@ -56,11 +56,14 @@ public struct TimelineWindow: Sendable, Equatable {
         public var id: Int { hour }
     }
 
-    /// One mark per whole hour from the start through the end.
+    /// A mark per whole hour from the start through the end; every second
+    /// or third hour on a long window, so the labels don't collide.
     public func hourMarks(clock: HouseholdClock) -> [HourMark] {
         let first = start.minute == 0 ? start.hour : start.hour + 1
         guard first <= end.hour else { return [] }
-        return (first...end.hour).compactMap { hour in
+        let span = end.hour - first
+        let step = span <= 8 ? 1 : span <= 12 ? 2 : 3
+        return stride(from: first, through: end.hour, by: step).compactMap { hour in
             guard let time = LocalTime(hour: hour, minute: 0) else { return nil }
             return HourMark(hour: hour, fraction: fraction(clock.instant(date, time)),
                             label: DisplayFormat.hourMark(hour, first: hour == first))

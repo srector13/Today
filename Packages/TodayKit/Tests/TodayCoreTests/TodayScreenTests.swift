@@ -33,6 +33,8 @@ struct TodayScreenTests {
         #expect(!TimelineWindow.restOfDay(plan, now: Fixture.at("2026-10-19", "14:40")).isRestOfDay)
         let day = TimelineWindow.day(plan)
         #expect(day.label == "6 AM – 9 PM")
+        // Fifteen hours: a mark every third hour.
+        #expect(day.hourMarks(clock: plan.clock).map(\.label) == ["6 AM", "9", "12", "3", "6", "9"])
         #expect(day.fraction(Fixture.at("2026-10-20", "03:00")) == 0)
     }
 
@@ -103,6 +105,7 @@ struct TodayScreenTests {
         #expect(next.loop?.stops.map(\.place) == ["School", "Grandparents'"])
         #expect(next.subtitle(planner: planner, now: Fixture.at("2026-10-21", "14:40")) == "3:30 PM · in 50 min · Sam drives")
         #expect(next.shortLine(clock: plan.clock) == "Pickup loop 3:30")
+        #expect(next.subtitle(planner: planner, now: Fixture.at("2026-10-21", "00:00"), relative: false) == "3:30 PM · Sam drives")
     }
 
     @Test func earlierOrdinaryItemsWinWhenTheLoopIsFarOff() throws {
