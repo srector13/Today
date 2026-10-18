@@ -7,8 +7,8 @@ import Foundation
 /// - A newer bundled file (you edited the repo and rebuilt) is adopted
 ///   automatically if nobody edited the rules in the app since the last
 ///   seed; otherwise the in-app version stays.
-/// - Calendars still named `<...>` are dropped as the rules load, and the
-///   file is saved without them.
+/// - Calendars still named `<...>` are dropped as the rules load (the next
+///   save leaves them out of the file) and before an import is written.
 /// - Every good load or save also writes a last-good copy. If the saved file
 ///   is ever unusable, the last good copy loads instead and says why.
 /// - Import validates before replacing anything.
@@ -41,7 +41,7 @@ public struct HouseholdStore: Sendable {
             try write(bundled, to: rulesURL)
             try write(bundled, to: seedURL)
             try write(bundled, to: lastGoodURL)
-            return try withoutPlaceholderCalendars(Loaded(rules: loaded.rules, warnings: loaded.warnings, recoveredFrom: nil))
+            return withoutPlaceholderCalendars(Loaded(rules: loaded.rules, warnings: loaded.warnings, recoveredFrom: nil))
         }
 
         let current = try read(rulesURL)
@@ -67,12 +67,17 @@ public struct HouseholdStore: Sendable {
     /// Replaces the rules with an edited file, only if it loads cleanly.
     @discardableResult
     public func importRules(_ data: Data) throws(RulesError) -> LoadedRules {
-        let loaded = try RulesLoader.load(data)
+        var loaded = try RulesLoader.load(data)
+        var rules = loaded.rules
+        var file = data
+        if rules.removePlaceholderCalendars() {
+            file = RulesWriter.data(rules)
+            loaded = LoadedRules(rules: rules, warnings: RulesValidator.validate(rules))
+        }
         try ensureDirectory()
-        try write(data, to: rulesURL)
-        try write(data, to: lastGoodURL)
-        let cleaned = try withoutPlaceholderCalendars(Loaded(rules: loaded.rules, warnings: loaded.warnings, recoveredFrom: nil))
-        return LoadedRules(rules: cleaned.rules, warnings: cleaned.warnings)
+        try write(file, to: rulesURL)
+        try write(file, to: lastGoodURL)
+        return loaded
     }
 
     /// The rules file as saved, for the share sheet.
@@ -146,11 +151,12 @@ public struct HouseholdStore: Sendable {
         }
     }
 
-    /// `loaded` minus any `<...>` calendars, saved if there were some.
-    private func withoutPlaceholderCalendars(_ loaded: Loaded) throws(RulesError) -> Loaded {
+    /// `loaded` minus any `<...>` calendars. The file isn't rewritten here,
+    /// so an unedited file still matches its seed and a recovered one stays
+    /// as it was.
+    private func withoutPlaceholderCalendars(_ loaded: Loaded) -> Loaded {
         var rules = loaded.rules
         guard rules.removePlaceholderCalendars() else { return loaded }
-        try save(rules)
         return Loaded(rules: rules, warnings: RulesValidator.validate(rules), recoveredFrom: loaded.recoveredFrom)
     }
 

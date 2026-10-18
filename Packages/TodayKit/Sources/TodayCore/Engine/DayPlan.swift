@@ -232,6 +232,9 @@ public enum LaneData: Sendable, Equatable {
     /// Never draw or speak this lane's open time as free: we can't see it.
     case noData(reason: String)
 
+    /// Nothing is picked in Household › Calendars yet, so no lane is known.
+    public static let noCalendarsPicked = LaneData.noData(reason: "no calendars are picked yet")
+
     public var isKnown: Bool { self == .known }
 }
 

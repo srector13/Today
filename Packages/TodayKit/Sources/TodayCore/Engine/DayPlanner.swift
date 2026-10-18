@@ -151,7 +151,7 @@ private struct PlanBuilder {
 
         let onDevice = Set(input.calendarsOnDevice.map { $0.lowercased() })
         let missing = rules.calendars.filter { !onDevice.contains($0.title.lowercased()) }
-        let noData = noDataReasons(missing)
+        let noData = rules.calendars.isEmpty ? noCalendarsPicked() : noDataReasons(missing)
 
         addBlockItems(occurrences)
         let schools = schoolStatuses(occurrences)
@@ -180,6 +180,13 @@ private struct PlanBuilder {
             missingCalendars: missing.map(\.title),
             unlistedCalendars: unlisted
         )
+    }
+
+    /// With no calendars picked, nobody's day can be seen: every lane is
+    /// unknown, never free.
+    private func noCalendarsPicked() -> [PersonID: String] {
+        guard case let .noData(reason) = LaneData.noCalendarsPicked else { return [:] }
+        return Dictionary(uniqueKeysWithValues: rules.people.map { ($0.id, reason) })
     }
 
     /// The people whose day we can't see, and why. A missing calendar blanks

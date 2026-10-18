@@ -112,7 +112,8 @@ In order, the first that applies decides:
 
 A calendar that isn't on the device makes its members' lanes **no data**; a
 missing `"everyone"` calendar makes every lane no data, since a name in a
-title can put its events anywhere. Unknown time is never shown as free.
+title can put its events anywhere. With no calendars picked yet, every lane
+is no data. Unknown time is never shown as free.
 Files from schema 1–2 (`role`/`owner`/`defaultOwner`) still load and are
 saved in the new form.
 

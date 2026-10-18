@@ -58,6 +58,9 @@ public struct BriefComposer: Sendable {
         for alert in plan.alerts where !(alert.kind == .missingCalendar && !everyLaneBlank) && !(isToday && alert.isOver(at: now)) {
             sentences.append(alert.message)
         }
+        if plan.lanes.contains(where: { $0.data == .noCalendarsPicked }) {
+            sentences.append("No calendars are picked for Today yet, so I can't see anyone's day.")
+        }
 
         if let loop = plan.pickupLoop, clock.instant(plan.date, loop.end) > now || !isToday {
             sentences.append(loopSentence(loop, plan: plan, now: now, isToday: isToday))

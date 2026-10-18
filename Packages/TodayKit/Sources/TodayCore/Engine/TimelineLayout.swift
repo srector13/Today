@@ -174,8 +174,8 @@ public struct AgendaRow: Sendable, Equatable, Identifiable {
     public let item: TimelineItem
     /// "3:15 PM", "Now" while it's on, or "All day".
     public let time: String
-    /// "Until 3:45 PM", then the item's own detail: where it is. The pickup
-    /// loop has its stops instead.
+    /// "Until 3:45 PM", then the item's own detail: where it is. The
+    /// driver's pickup loop has its stops instead.
     public let detail: String?
     public let style: LaneBlock.Style
 
@@ -199,8 +199,8 @@ public enum LaneAgenda {
             .map { item in
                 let underway = now.map { item.start <= $0 } ?? false
                 var detail: [String] = []
-                // The loop's stops already say when it's home.
-                if item.end > item.start, item.kind != .pickupLoop {
+                // The driver's loop lists its stops, home time included.
+                if item.end > item.start, item.id != "loop" {
                     detail.append("Until \(clock.localTime(of: item.end).twelveHour)")
                 }
                 if let more = item.detail { detail.append(more) }

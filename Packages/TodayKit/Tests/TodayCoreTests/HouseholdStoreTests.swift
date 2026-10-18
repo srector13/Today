@@ -57,7 +57,7 @@ struct HouseholdStoreTests {
         #expect(loaded.rules.todo.isEmpty)
     }
 
-    @Test func placeholderCalendarsAreDroppedAndTheFileSaved() throws {
+    @Test func placeholderCalendarsAreDroppedAsTheRulesLoad() throws {
         var rules = try store.load(bundled: bundled).rules
         rules.calendars.insert(CalendarRule(title: "<Family calendar>", members: .everyone, ifNobodyNamed: .people(["grandpa"])), at: 0)
         rules.calendars.append(CalendarRule(title: " <Wife's calendar> ", members: .people(["mom"])))
@@ -65,9 +65,21 @@ struct HouseholdStoreTests {
         let loaded = try store.load(bundled: bundled)
         #expect(loaded.rules.calendars == Fixture.rules.calendars)
         #expect(!loaded.warnings.contains { $0.path.hasPrefix("calendars") })
+        // The next save writes the file without them.
+        try store.save(loaded.rules)
         let saved = try #require(String(data: store.exportData(), encoding: .utf8))
         #expect(!saved.contains("<Family calendar>") && !saved.contains("<Wife's calendar>"))
-        #expect(try store.load(bundled: bundled).rules == loaded.rules)
+    }
+
+    @Test func aBundledPlaceholderCalendarDoesNotStopLaterUpdates() throws {
+        let withPlaceholder = bundledVariant { json in
+            var calendars = json["calendars"] as! [[String: Any]]
+            calendars.append(["title": "<Your calendar>", "members": ["dad"]])
+            json["calendars"] = calendars
+        }
+        #expect(try store.load(bundled: withPlaceholder).rules.calendars == Fixture.rules.calendars)
+        let newer = bundledVariant { $0["todo"] = ["New question"] }
+        #expect(try store.load(bundled: newer).rules.todo == ["New question"])
     }
 
     @Test func importedPlaceholderCalendarsAreDroppedToo() throws {
@@ -80,6 +92,7 @@ struct HouseholdStoreTests {
         let imported = try store.importRules(file)
         #expect(imported.rules.calendars == Fixture.rules.calendars)
         #expect(try store.load(bundled: bundled).rules.calendars == Fixture.rules.calendars)
+        #expect(try !String(decoding: store.exportData(), as: UTF8.self).contains("<Your calendar>"))
     }
 
     @Test func importReplacesOnlyWhenValid() throws {

@@ -105,6 +105,27 @@ struct TodayScreenTests {
         #expect(rows.map(\.time) == ["Now", "3:15 PM", "3:30 PM"])
         #expect(rows[0].detail == "Until 5:00 PM" && rows[0].style == .background)
         #expect(rows[2].detail == "School 3:30 → Grandparents' 3:45 → home ~4:00" && rows[2].style == .high)
+        // A kid's ride says when they're home.
+        let emma = try #require(plan.lane("Emma"))
+        let ride = try #require(LaneAgenda.rows(for: emma, now: Fixture.at("2026-10-21", "14:40"), clock: plan.clock)
+            .first { $0.item.id == "loop:kinder" })
+        #expect(ride.time == "3:30 PM" && ride.detail == "Until 4:00 PM · Picked up at School 3:30")
+    }
+
+    @Test func withNoCalendarsPickedNoLaneLooksFree() throws {
+        let planner = try Fixture.planner { $0["calendars"] = [] }
+        let plan = Fixture.plan("2026-10-20", events: SampleHousehold.events(on: SampleHousehold.tuesday), planner: planner)
+        #expect(!plan.lanes.isEmpty && plan.lanes.allSatisfy { $0.data == .noCalendarsPicked })
+        // Only events an assignment rule claims (SERC → Jess) still show.
+        #expect(plan.items.filter { $0.event != nil }.allSatisfy {
+            if case .calendar(_, .rule) = $0.origin { true } else { false }
+        })
+        // Work, school, care and the loop come from the rules, so they still show.
+        #expect(plan.items.contains { $0.id == "loop" })
+        let brief = BriefComposer(planner: planner).brief(plan, now: Fixture.at("2026-10-20", "06:30"),
+                                                          weather: nil, doneNeeds: [])
+        #expect(brief.contains("No calendars are picked for Today yet, so I can't see anyone's day."))
+        #expect(!brief.contains("calendar isn't on this iPhone"))
     }
 
     @Test func anotherDayListsTheWholeDayWithAllDayItemsFirst() throws {

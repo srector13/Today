@@ -218,6 +218,13 @@ struct LanesCard: View {
     }
 }
 
+extension Lane {
+    /// Why the lane is blank, short enough to sit inside it.
+    var noDataText: String {
+        data == .noCalendarsPicked ? "No data · no calendars picked yet" : "No data · calendar not on this iPhone"
+    }
+}
+
 private struct LaneRow: View {
     let lane: Lane
     let window: TimelineWindow
@@ -258,7 +265,7 @@ private struct LaneRow: View {
                         Hatch()
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         if blocks.isEmpty {
-                            Text("No data · calendar not on this iPhone")
+                            Text(lane.noDataText)
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(Color(white: 0.78))
                                 .frame(width: width, height: LanesCard.barHeight)
@@ -533,7 +540,7 @@ private struct PersonList: View {
     }
 
     private var emptyText: String {
-        if case .noData = lane.data { return "No data · calendar not on this iPhone" }
+        if case .noData = lane.data { return lane.noDataText }
         return isToday ? "Nothing else today" : "Nothing on the calendar"
     }
 }
