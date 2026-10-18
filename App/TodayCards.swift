@@ -411,6 +411,179 @@ private struct HiddenItemsLink: View {
     }
 }
 
+// MARK: - Lanes as lists
+
+/// Timeline or list: a two-icon switch over the lanes.
+struct LanesStylePicker: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 2) {
+            option(.timeline, label: "Timeline", symbol: "chart.bar.xaxis")
+            option(.list, label: "List", symbol: "list.bullet")
+        }
+        .padding(3)
+        .glassEffect(.regular, in: Capsule())
+    }
+
+    private func option(_ style: AppModel.LanesStyle, label: String, symbol: String) -> some View {
+        let isOn = model.lanesStyle == style
+        return Button {
+            withAnimation(.snappy) { model.lanesStyle = style }
+        } label: {
+            Image(systemName: symbol)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(isOn ? Color.white : Theme.secondary)
+                .frame(width: 40, height: 28)
+                .background(isOn ? Color.white.opacity(0.18) : .clear, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Show lanes as \(label.lowercased())")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+        .pageIdentifier("lanes.\(style.rawValue)")
+    }
+}
+
+/// The lanes as lists: each person's day in words, so reading it takes no
+/// taps. Today leaves out what's over; other days show the whole day.
+struct PersonListCard: View {
+    @Environment(AppModel.self) private var model
+    let plan: DayPlan
+    /// Today's time; `nil` for another day.
+    let now: Date?
+    let onSelect: (TimelineItem) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(plan.laneGroups) { group in
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(group.group.title.uppercased())
+                        .font(.caption2.weight(.semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(Theme.secondary)
+                        .padding(.leading, 2)
+                        .padding(.bottom, 2)
+                        .accessibilityAddTraits(.isHeader)
+                    ForEach(Array(group.lanes.enumerated()), id: \.element.id) { index, lane in
+                        if index > 0 {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.07))
+                                .frame(height: 1)
+                                .padding(.leading, 34)
+                        }
+                        PersonList(lane: lane, rows: LaneAgenda.rows(for: lane, now: now, clock: plan.clock),
+                                   isToday: now != nil, photo: model.photoURL(lane.photo), onSelect: onSelect)
+                    }
+                }
+                .padding(.top, group.id == plan.laneGroups.first?.id ? 2 : 14)
+            }
+            if !plan.hiddenItems.isEmpty {
+                HiddenItemsLink(items: plan.hiddenItems, onSelect: onSelect)
+                    .padding(.top, 10)
+            }
+        }
+        .card(padding: 12)
+    }
+}
+
+/// One lane: the person, then a row per item.
+private struct PersonList: View {
+    let lane: Lane
+    let rows: [AgendaRow]
+    let isToday: Bool
+    let photo: URL?
+    let onSelect: (TimelineItem) -> Void
+
+    var body: some View {
+        let color = Color(lane.color)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Avatar(initials: lane.initials, color: lane.color, photo: photo, size: 24)
+                Text(lane.label)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                if case .noData = lane.data, !rows.isEmpty {
+                    Text("No calendar data")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.tertiary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            if rows.isEmpty {
+                Text(emptyText)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.tertiary)
+                    .padding(.leading, 34)
+                    .pageIdentifier("agenda.empty.\(lane.label)")
+            } else {
+                ForEach(rows) { row in
+                    Button { onSelect(row.item) } label: {
+                        AgendaRowView(row: row, color: color)
+                    }
+                    .buttonStyle(.plain)
+                    .pageIdentifier("agenda.row.\(row.item.id)")
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .contain)
+        .pageIdentifier("agenda.\(lane.label)")
+    }
+
+    private var emptyText: String {
+        if case .noData = lane.data { return "No data · calendar not on this iPhone" }
+        return isToday ? "Nothing else today" : "Nothing on the calendar"
+    }
+}
+
+private struct AgendaRowView: View {
+    let row: AgendaRow
+    let color: Color
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(row.time)
+                .font(.footnote.weight(.semibold).monospacedDigit())
+                .foregroundStyle(row.time == "Now" ? Theme.nowLine : Theme.secondary)
+                .frame(width: 62, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.item.title)
+                    .font(.subheadline.weight(row.style == .background ? .regular : .semibold))
+                    .foregroundStyle(row.style == .background ? Color(white: 0.8) : .white)
+                    .multilineTextAlignment(.leading)
+                if let detail = row.detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(Theme.tertiary)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 7)
+        .padding(.leading, 12)
+        .padding(.trailing, 10)
+        .background(fill)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(color.opacity(row.style == .background ? 0.45 : 1))
+                .frame(width: 4)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .contentShape(Rectangle())
+    }
+
+    private var fill: Color {
+        switch row.style {
+        case .background: Color.white.opacity(0.04)
+        case .normal: color.opacity(0.16)
+        case .high: color.opacity(0.32)
+        }
+    }
+}
+
 // MARK: - Weather
 
 struct WeatherCard: View {

@@ -5,7 +5,7 @@ import XCTest
 /// keeps a named screenshot of each in the result bundle. CI exports them
 /// to the ci-screenshots branch.
 final class SeededDayTests: XCTestCase {
-    static let milestone = "M5"
+    static let milestone = "M6"
     static let seededDays = ["2026-10-20", "2026-10-21", "2026-10-24"]
 
     override func setUpWithError() throws {
@@ -154,6 +154,33 @@ final class SeededDayTests: XCTestCase {
         let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: card)
         wait(for: [gone], timeout: 10)
         XCTAssertTrue(app.descendants(matching: .any)["block.event:2026-10-21-conference"].exists)
+    }
+
+    @MainActor
+    func testPersonList() throws {
+        let app = launch(seed: "2026-10-20")
+        let list = app.buttons["lanes.list"]
+        XCTAssertTrue(list.waitForExistence(timeout: 20))
+        for _ in 0..<3 where !list.isHittable {
+            app.swipeUp()
+        }
+        list.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["agenda.Sam"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["agenda.row.loop"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["lane.Sam"].exists)
+        keepScreenshot(of: app, named: "\(Self.milestone)-person-list-1")
+        app.swipeUp()
+        keepScreenshot(of: app, named: "\(Self.milestone)-person-list-2")
+        // A row opens the same sheet as a block.
+        let serc = app.buttons["agenda.row.event:2026-10-20-serc"]
+        XCTAssertTrue(serc.waitForExistence(timeout: 10))
+        for _ in 0..<3 where !serc.isHittable {
+            app.swipeUp()
+        }
+        serc.tap()
+        let headline = app.staticTexts["why.headline"]
+        XCTAssertTrue(headline.waitForExistence(timeout: 20))
+        XCTAssertEqual(headline.label, "On Jess's lane")
     }
 
     @MainActor

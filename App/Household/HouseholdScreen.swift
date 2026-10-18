@@ -15,7 +15,11 @@ struct HouseholdScreen: View {
 
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    @State private var tab: Tab = .people
+    @State private var tab: Tab
+
+    init(tab: Tab = .people) {
+        _tab = State(initialValue: tab)
+    }
 
     var body: some View {
         NavigationStack {

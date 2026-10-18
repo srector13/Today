@@ -39,7 +39,10 @@ The Xcode project uses folder-synced groups: add a file under `App/`,
   alerts, **Up next**, the lanes for the rest of today, weather, what the
   kids need (tap to check off, per day), and birthdays. **Swipe** left and
   right through the days (a month back, two ahead); **Today** jumps back.
-- **Tap any block** for "Why is this here?": what put it there, and **who
+- **Timeline or list**: the switch over the lanes shows them as timelines
+  or as a list of each person's day in words (time, title, until when,
+  where). The phone remembers the choice.
+- **Tap any block or row** for "Why is this here?": what put it there, and **who
   it's for**: pick people for **just this event**, **every repeat**, or
   **every event with this title** (a rule at the top of the list). Also
   **Make a Rule**, **Hide from Today**, **Open in Calendar**.
@@ -49,15 +52,18 @@ The Xcode project uses folder-synced groups: add a file under `App/`,
   group, other names, shared lane, birthday, own calendar), Rules (Mail-style,
   with a live preview of the next 14 days), Schedule (blocks, school
   calendars, care, pickup loop, check-in times, lane hours, home location
-  for weather; export/import household.json) and Calendars (what each
-  calendar on the phone is, missing ones, Reminders lists for needs).
+  for weather; export/import household.json) and Calendars (the phone's
+  calendars and who each belongs to, any that have left the phone,
+  Reminders lists for needs). Today only uses calendars picked here; until
+  one is, a banner on Today points here.
 - Every save is validated first; a change that would break the rules is
   refused with the reason.
 
 ## Editing the rules
 
 `Rules/household.json` holds every household fact that isn't on a calendar:
-people, calendars and who owns them, work/school/preschool blocks, school
+people, the phone's calendars and who owns them (empty until picked in the
+app), work/school/preschool blocks, school
 calendars (days off, early releases), the in-laws' care, the pickup loop,
 kids' recurring needs, check-in times and what counts as important.
 
@@ -65,6 +71,10 @@ kids' recurring needs, check-in times and what counts as important.
 - Days are `"daily"`, `"weekdays"`, `"weekends"` or a list like `["tue", "thu"]`.
 - Anything in `<angle brackets>` is a placeholder, and each `todo` entry is an
   open question. Both show as "rules incomplete" warnings until resolved.
+  A calendar still titled `<...>` is dropped when the rules load.
+- Once the rules have been edited in the app, a rebuilt app with a changed
+  `household.json` leaves them alone; import the file from Household ›
+  Schedule to replace them.
 - A misspelt key, a bad time or an id that doesn't exist is an error that names
   the exact spot (`blocks[1].start: "8.15" is not a time...`) and suggests the
   nearest valid key or id.
@@ -142,5 +152,6 @@ with those capabilities: `PolarReailty.Today`, `PolarReailty.Today.widgets`,
 3. Main screen (lanes, Up next, weather, needs, birthdays) ✓
 4. Spoken brief and in-app Household editors ✓
 5. Shared calendars, picks by hand, Needs a person, swiping through days ✓
-6. Check-in notifications (6:30 / 12:00 / 3:15)
-7. Lock Screen + Home Screen widgets
+6. Phone calendars only, lanes as a list ✓
+7. Check-in notifications (6:30 / 12:00 / 3:15)
+8. Lock Screen + Home Screen widgets

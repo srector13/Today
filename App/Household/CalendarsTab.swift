@@ -2,8 +2,9 @@ import SwiftUI
 import TodayCore
 import TodaySources
 
-/// What each calendar on the phone is to the household, which listed
-/// calendars are missing, and which Reminders lists hold kids' needs.
+/// What each calendar on the phone is to the household, which of the
+/// household's calendars have left the phone, and which Reminders lists hold
+/// kids' needs.
 struct CalendarsTab: View {
     @Environment(AppModel.self) private var model
     let planner: DayPlanner
@@ -44,8 +45,10 @@ struct CalendarsTab: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            // Without access every calendar looks gone; the section above says why.
             let onDevice = Set(model.deviceCalendars.map { $0.title.lowercased() })
-            let missing = rules.calendars.filter { !onDevice.contains($0.title.lowercased()) }
+            let missing = model.calendarAccess != .granted ? []
+                : rules.calendars.filter { !onDevice.contains($0.title.lowercased()) }
             if !missing.isEmpty {
                 Section {
                     ForEach(missing, id: \.title) { calendar in
@@ -69,7 +72,7 @@ struct CalendarsTab: View {
                         .accessibilityIdentifier("calendar.missing.\(calendar.title)")
                     }
                 } header: {
-                    Text("Not found")
+                    Text("No longer on this iPhone")
                 } footer: {
                     Text("To share a calendar to this iPhone: in Calendar on the phone that owns it, tap Calendars, tap ⓘ next to the calendar, then Add Person. Or sign in to the same account in Settings › Apps › Calendar › Calendar Accounts.")
                 }

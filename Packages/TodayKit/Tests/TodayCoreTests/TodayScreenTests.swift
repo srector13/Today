@@ -95,6 +95,31 @@ struct TodayScreenTests {
         #expect(LaneLayout.blocks(for: kate, in: TimelineWindow.day(plan)).isEmpty)
     }
 
+    // MARK: List view
+
+    @Test func aLaneAsAListShowsWhatsLeftOfToday() throws {
+        let plan = seeded(SampleHousehold.wednesday)
+        let sam = try #require(plan.lane("Sam"))
+        let rows = LaneAgenda.rows(for: sam, now: Fixture.at("2026-10-21", "14:40"), clock: plan.clock)
+        #expect(rows.map(\.item.title) == ["Work", "Call with vendor", "Pickup loop"])
+        #expect(rows.map(\.time) == ["Now", "3:15 PM", "3:30 PM"])
+        #expect(rows[0].detail == "Until 5:00 PM" && rows[0].style == .background)
+        #expect(rows[2].detail == "School 3:30 → Grandparents' 3:45 → home ~4:00" && rows[2].style == .high)
+    }
+
+    @Test func anotherDayListsTheWholeDayWithAllDayItemsFirst() throws {
+        let plan = seeded(SampleHousehold.tuesday)
+        let emma = try #require(plan.lane("Emma"))
+        let rows = LaneAgenda.rows(for: emma, now: nil, clock: plan.clock)
+        #expect(rows.first?.time == "All day" && rows.first?.item.title == "Picture day - Emma")
+        #expect(rows.dropFirst().map(\.item.start) == rows.dropFirst().map(\.item.start).sorted())
+        #expect(rows.contains { $0.item.id == "block:school" && $0.time == "8:15 AM" && $0.detail == "Until 3:30 PM" })
+        #expect(!rows.contains { $0.time == "Now" })
+        let serc = try #require(plan.lane("Jess").flatMap { LaneAgenda.rows(for: $0, now: nil, clock: plan.clock) }?
+            .first { $0.item.title == "SERC planning" })
+        #expect(serc.detail == "Until \(plan.clock.localTime(of: serc.item.end).twelveHour) · Library annex")
+    }
+
     // MARK: Up next
 
     @Test func theLoopIsUpNextWithinNinetyMinutes() throws {

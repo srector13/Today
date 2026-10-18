@@ -6,8 +6,9 @@ import Foundation
 /// - The bundled `Rules/household.json` seeds it the first time.
 /// - A newer bundled file (you edited the repo and rebuilt) is adopted
 ///   automatically if nobody edited the rules in the app since the last
-///   seed; otherwise the in-app version stays and `bundledUpdateAvailable`
-///   says the new bundled file can be imported.
+///   seed; otherwise the in-app version stays.
+/// - Calendars still named `<...>` are dropped as the rules load, and the
+///   file is saved without them.
 /// - Every good load or save also writes a last-good copy. If the saved file
 ///   is ever unusable, the last good copy loads instead and says why.
 /// - Import validates before replacing anything.
@@ -29,9 +30,6 @@ public struct HouseholdStore: Sendable {
         public let warnings: [RulesIssue]
         /// The saved file was unusable; these rules are the last good copy.
         public let recoveredFrom: RulesError?
-        /// The bundled file changed, but the rules were edited in the app, so
-        /// the bundled version wasn't adopted. Offer to import it.
-        public let bundledUpdateAvailable: Bool
     }
 
     /// The saved rules, seeding or upgrading from `bundled` as described above.
@@ -43,24 +41,17 @@ public struct HouseholdStore: Sendable {
             try write(bundled, to: rulesURL)
             try write(bundled, to: seedURL)
             try write(bundled, to: lastGoodURL)
-            return Loaded(rules: loaded.rules, warnings: loaded.warnings, recoveredFrom: nil, bundledUpdateAvailable: false)
+            return try withoutPlaceholderCalendars(Loaded(rules: loaded.rules, warnings: loaded.warnings, recoveredFrom: nil))
         }
 
         let current = try read(rulesURL)
         let lastSeed = fm.fileExists(atPath: seedURL.path) ? try read(seedURL) : nil
-        var bundledUpdateAvailable = false
-        if bundled != lastSeed {
-            if current == lastSeed, (try? RulesLoader.load(bundled)) != nil {
-                // Untouched since the last seed: take the new bundled rules.
-                try write(bundled, to: rulesURL)
-                try write(bundled, to: seedURL)
-                return try loadSaved()
-            }
-            bundledUpdateAvailable = current != bundled
+        if bundled != lastSeed, current == lastSeed, (try? RulesLoader.load(bundled)) != nil {
+            // Untouched since the last seed: take the new bundled rules.
+            try write(bundled, to: rulesURL)
+            try write(bundled, to: seedURL)
         }
-        let saved = try loadSaved()
-        return Loaded(rules: saved.rules, warnings: saved.warnings, recoveredFrom: saved.recoveredFrom,
-                      bundledUpdateAvailable: bundledUpdateAvailable)
+        return try withoutPlaceholderCalendars(loadSaved())
     }
 
     /// Saves rules edited in the app. Rules with errors are refused.
@@ -75,15 +66,13 @@ public struct HouseholdStore: Sendable {
 
     /// Replaces the rules with an edited file, only if it loads cleanly.
     @discardableResult
-    public func importRules(_ data: Data, bundled: Data? = nil) throws(RulesError) -> LoadedRules {
+    public func importRules(_ data: Data) throws(RulesError) -> LoadedRules {
         let loaded = try RulesLoader.load(data)
         try ensureDirectory()
         try write(data, to: rulesURL)
         try write(data, to: lastGoodURL)
-        if let bundled, bundled == data {
-            try write(bundled, to: seedURL)
-        }
-        return loaded
+        let cleaned = try withoutPlaceholderCalendars(Loaded(rules: loaded.rules, warnings: loaded.warnings, recoveredFrom: nil))
+        return LoadedRules(rules: cleaned.rules, warnings: cleaned.warnings)
     }
 
     /// The rules file as saved, for the share sheet.
@@ -150,11 +139,19 @@ public struct HouseholdStore: Sendable {
         do {
             let loaded = try RulesLoader.load(read(rulesURL))
             try write(read(rulesURL), to: lastGoodURL)
-            return Loaded(rules: loaded.rules, warnings: loaded.warnings, recoveredFrom: nil, bundledUpdateAvailable: false)
+            return Loaded(rules: loaded.rules, warnings: loaded.warnings, recoveredFrom: nil)
         } catch {
             guard let fallback = try? RulesLoader.load(read(lastGoodURL)) else { throw error }
-            return Loaded(rules: fallback.rules, warnings: fallback.warnings, recoveredFrom: error, bundledUpdateAvailable: false)
+            return Loaded(rules: fallback.rules, warnings: fallback.warnings, recoveredFrom: error)
         }
+    }
+
+    /// `loaded` minus any `<...>` calendars, saved if there were some.
+    private func withoutPlaceholderCalendars(_ loaded: Loaded) throws(RulesError) -> Loaded {
+        var rules = loaded.rules
+        guard rules.removePlaceholderCalendars() else { return loaded }
+        try save(rules)
+        return Loaded(rules: rules, warnings: RulesValidator.validate(rules), recoveredFrom: loaded.recoveredFrom)
     }
 
     private func ensureDirectory() throws(RulesError) {

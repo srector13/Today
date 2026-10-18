@@ -167,3 +167,47 @@ public enum LaneLayout {
         }
     }
 }
+
+/// One line of a lane in the list view: "3:15 PM · Call with vendor ·
+/// Until 3:45 PM".
+public struct AgendaRow: Sendable, Equatable, Identifiable {
+    public let item: TimelineItem
+    /// "3:15 PM", "Now" while it's on, or "All day".
+    public let time: String
+    /// "Until 3:45 PM", then the item's own detail: where it is. The pickup
+    /// loop has its stops instead.
+    public let detail: String?
+    public let style: LaneBlock.Style
+
+    public var id: String { item.id }
+}
+
+public enum LaneAgenda {
+    /// The lane's items as a list: all-day ones first, then the timed ones
+    /// by start. Given `now` (today), what's already over is left out.
+    public static func rows(for lane: Lane, now: Date?, clock: HouseholdClock) -> [AgendaRow] {
+        let allDay = lane.items.filter(\.isAllDay).map {
+            AgendaRow(item: $0, time: "All day", detail: $0.detail, style: LaneLayout.style(of: $0))
+        }
+        let timed = lane.items
+            .filter { item in
+                guard !item.isAllDay else { return false }
+                guard let now else { return true }
+                return item.end > now || (item.start == item.end && item.start >= now)
+            }
+            .sorted { ($0.start, $0.end, $0.id) < ($1.start, $1.end, $1.id) }
+            .map { item in
+                let underway = now.map { item.start <= $0 } ?? false
+                var detail: [String] = []
+                // The loop's stops already say when it's home.
+                if item.end > item.start, item.kind != .pickupLoop {
+                    detail.append("Until \(clock.localTime(of: item.end).twelveHour)")
+                }
+                if let more = item.detail { detail.append(more) }
+                return AgendaRow(item: item, time: underway ? "Now" : clock.localTime(of: item.start).twelveHour,
+                                 detail: detail.isEmpty ? nil : detail.joined(separator: " · "),
+                                 style: LaneLayout.style(of: item))
+            }
+        return allDay + timed
+    }
+}

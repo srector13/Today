@@ -21,7 +21,6 @@ struct HouseholdStoreTests {
         let loaded = try store.load(bundled: bundled)
         #expect(loaded.rules == Fixture.rules)
         #expect(loaded.recoveredFrom == nil)
-        #expect(!loaded.bundledUpdateAvailable)
         #expect(try Data(contentsOf: store.rulesURL) == bundled)
     }
 
@@ -31,7 +30,6 @@ struct HouseholdStoreTests {
         try store.save(rules)
         let reloaded = try store.load(bundled: bundled)
         #expect(reloaded.rules.people[0].color?.hex == "#FF6B5E")
-        #expect(!reloaded.bundledUpdateAvailable)
     }
 
     @Test func savingInvalidRulesIsRefusedAndChangesNothing() throws {
@@ -47,7 +45,6 @@ struct HouseholdStoreTests {
         let newer = bundledVariant { $0["todo"] = ["New question"] }
         let loaded = try store.load(bundled: newer)
         #expect(loaded.rules.todo == ["New question"])
-        #expect(!loaded.bundledUpdateAvailable)
     }
 
     @Test func aNewBundledFileDoesNotOverwriteInAppEdits() throws {
@@ -58,7 +55,31 @@ struct HouseholdStoreTests {
         let loaded = try store.load(bundled: newer)
         #expect(loaded.rules.people[0].name == "Samuel")
         #expect(loaded.rules.todo.isEmpty)
-        #expect(loaded.bundledUpdateAvailable)
+    }
+
+    @Test func placeholderCalendarsAreDroppedAndTheFileSaved() throws {
+        var rules = try store.load(bundled: bundled).rules
+        rules.calendars.insert(CalendarRule(title: "<Family calendar>", members: .everyone, ifNobodyNamed: .people(["grandpa"])), at: 0)
+        rules.calendars.append(CalendarRule(title: " <Wife's calendar> ", members: .people(["mom"])))
+        try store.save(rules)
+        let loaded = try store.load(bundled: bundled)
+        #expect(loaded.rules.calendars == Fixture.rules.calendars)
+        #expect(!loaded.warnings.contains { $0.path.hasPrefix("calendars") })
+        let saved = try #require(String(data: store.exportData(), encoding: .utf8))
+        #expect(!saved.contains("<Family calendar>") && !saved.contains("<Wife's calendar>"))
+        #expect(try store.load(bundled: bundled).rules == loaded.rules)
+    }
+
+    @Test func importedPlaceholderCalendarsAreDroppedToo() throws {
+        _ = try store.load(bundled: bundled)
+        let file = bundledVariant { json in
+            var calendars = json["calendars"] as! [[String: Any]]
+            calendars.append(["title": "<Your calendar>", "members": ["dad"]])
+            json["calendars"] = calendars
+        }
+        let imported = try store.importRules(file)
+        #expect(imported.rules.calendars == Fixture.rules.calendars)
+        #expect(try store.load(bundled: bundled).rules.calendars == Fixture.rules.calendars)
     }
 
     @Test func importReplacesOnlyWhenValid() throws {

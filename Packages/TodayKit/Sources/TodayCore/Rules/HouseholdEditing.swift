@@ -179,6 +179,16 @@ extension HouseholdRules {
         }
     }
 
+    /// Drops calendars still named `<...>`, as the first household.json
+    /// shipped them: they never match a calendar on the phone. Returns
+    /// whether any were dropped.
+    @discardableResult
+    public mutating func removePlaceholderCalendars() -> Bool {
+        let before = calendars.count
+        calendars.removeAll { TitleAttributor.isPlaceholder($0.title) }
+        return calendars.count != before
+    }
+
     /// The person's own (one-member) calendar, if one is listed.
     public func personalCalendar(of id: PersonID) -> String? {
         calendars.first { $0.soleMember == id }?.title

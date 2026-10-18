@@ -38,7 +38,8 @@ struct SelectedItem: Identifiable {
 /// lanes, then weather, kids' needs and birthdays.
 struct TodayScreen: View {
     @Environment(AppModel.self) private var model
-    @State private var showHousehold = false
+    /// The Household sheet, open on this tab.
+    @State private var household: HouseholdScreen.Tab?
     @State private var selected: SelectedItem?
     @State private var showWarnings = false
 
@@ -51,7 +52,7 @@ struct TodayScreen: View {
             case let .rulesError(message):
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        DayHeader(date: model.today, showHousehold: $showHousehold)
+                        DayHeader(date: model.today, household: $household)
                         RulesErrorCard(message: message)
                     }
                     .padding(.horizontal, 16)
@@ -59,7 +60,7 @@ struct TodayScreen: View {
             case .ready:
                 TabView(selection: $model.selectedDate) {
                     ForEach(model.pageDates, id: \.self) { date in
-                        DayPage(date: date, selected: $selected, showHousehold: $showHousehold, showWarnings: $showWarnings)
+                        DayPage(date: date, selected: $selected, household: $household, showWarnings: $showWarnings)
                             .environment(\.isCurrentPage, date == model.selectedDate)
                             .tag(date)
                     }
@@ -68,8 +69,8 @@ struct TodayScreen: View {
             }
         }
         .background(Theme.background.ignoresSafeArea())
-        .sheet(isPresented: $showHousehold) {
-            HouseholdScreen()
+        .sheet(item: $household) { tab in
+            HouseholdScreen(tab: tab)
                 .environment(model)
         }
         .sheet(item: $selected) { selection in
@@ -110,18 +111,19 @@ private struct DayPage: View {
     @Environment(BriefSpeaker.self) private var speaker
     let date: LocalDate
     @Binding var selected: SelectedItem?
-    @Binding var showHousehold: Bool
+    @Binding var household: HouseholdScreen.Tab?
     @Binding var showWarnings: Bool
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                DayHeader(date: date, showHousehold: $showHousehold)
+                DayHeader(date: date, household: $household)
                 if let text = speaker.text, speaker.date == date {
                     BriefCard(text: text, isSpeaking: speaker.isSpeaking) { speaker.dismiss() }
                 }
                 if let plan = model.plan(on: date), let planner = model.planner {
-                    DayContent(date: date, plan: plan, planner: planner, selected: $selected, showWarnings: $showWarnings)
+                    DayContent(date: date, plan: plan, planner: planner, selected: $selected, household: $household,
+                               showWarnings: $showWarnings)
                 } else {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
                 }
@@ -140,7 +142,7 @@ private struct DayHeader: View {
     @Environment(AppModel.self) private var model
     @Environment(BriefSpeaker.self) private var speaker
     let date: LocalDate
-    @Binding var showHousehold: Bool
+    @Binding var household: HouseholdScreen.Tab?
 
     var body: some View {
         let speaking = speaker.isSpeaking && speaker.date == date
@@ -186,7 +188,7 @@ private struct DayHeader: View {
                     .pageIdentifier("today.jump")
                 }
                 Button {
-                    showHousehold = true
+                    household = .people
                 } label: {
                     Image(systemName: "person.2.fill")
                         .font(.body.weight(.semibold))
@@ -219,6 +221,7 @@ private struct DayContent: View {
     let plan: DayPlan
     let planner: DayPlanner
     @Binding var selected: SelectedItem?
+    @Binding var household: HouseholdScreen.Tab?
     @Binding var showWarnings: Bool
 
     var body: some View {
@@ -228,7 +231,7 @@ private struct DayContent: View {
         let select: (TimelineItem) -> Void = { selected = SelectedItem(item: $0, date: date) }
         VStack(alignment: .leading, spacing: 16) {
             if date == today {
-                SetupBanners(showWarnings: $showWarnings)
+                SetupBanners(household: $household, showWarnings: $showWarnings)
             }
             StatusChips(plan: plan, planner: planner)
             if date >= today {
@@ -248,18 +251,23 @@ private struct DayContent: View {
                            weather: model.weather(on: date), onSelect: select)
             }
 
-            HStack(alignment: .firstTextBaseline) {
+            HStack {
                 Text(date != today ? DisplayFormat.weekdayShortDate(date) : window.isRestOfDay ? "Rest of today" : "Today")
                     .font(.title2.bold())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                Text(window.label)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.secondary)
+                LanesStylePicker()
             }
             .padding(.horizontal, 4)
             .padding(.top, 6)
-            LanesCard(plan: plan, window: window, now: now, onSelect: select)
+            switch model.lanesStyle {
+            case .timeline:
+                LanesCard(plan: plan, window: window, now: now, onSelect: select)
+            case .list:
+                PersonListCard(plan: plan, now: date == today ? now : nil, onSelect: select)
+            }
 
             if date >= today {
                 WeatherCard(date: date)
@@ -280,17 +288,33 @@ private struct DayContent: View {
     }
 }
 
-/// Calendar access, incomplete rules and recovered files, above the day.
+/// Calendar access, calendars not set up yet, incomplete rules and
+/// recovered files, above the day.
 private struct SetupBanners: View {
     @Environment(AppModel.self) private var model
+    @Binding var household: HouseholdScreen.Tab?
     @Binding var showWarnings: Bool
-    @State private var importIssues: [RulesIssue] = []
 
     var body: some View {
         VStack(spacing: 12) {
             switch model.calendarAccess {
             case .granted:
-                EmptyView()
+                if model.rules?.calendars.isEmpty == true, model.deviceCalendars.contains(where: { !$0.isBirthdays }) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Pick the calendars Today shows, and who each one belongs to.")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.secondary)
+                        Button {
+                            household = .calendars
+                        } label: {
+                            Label("Choose Calendars", systemImage: "calendar")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glassProminent)
+                        .accessibilityIdentifier("choose.calendars")
+                    }
+                    .card()
+                }
             case .notDetermined:
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Calendars not connected yet, so every lane shows no data.")
@@ -318,17 +342,6 @@ private struct SetupBanners: View {
                     .foregroundStyle(Theme.warningText)
                     .card(Theme.warningCard)
             }
-            if model.bundledUpdateAvailable {
-                HStack {
-                    Text("This build has a newer household.json than the one you've edited.")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.secondary)
-                    Spacer()
-                    Button("Use It") { importIssues = model.importBundledRules() }
-                        .buttonStyle(.glass)
-                }
-                .card()
-            }
             if !model.warnings.isEmpty {
                 Button {
                     showWarnings = true
@@ -350,13 +363,6 @@ private struct SetupBanners: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("rules.warnings")
             }
-        }
-        .alert("Couldn't use the bundled rules", isPresented: Binding(
-            get: { !importIssues.isEmpty }, set: { if !$0 { importIssues = [] } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(importIssues.map(\.description).joined(separator: "\n"))
         }
     }
 }

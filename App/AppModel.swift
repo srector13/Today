@@ -36,6 +36,12 @@ final class AppModel {
         case everyTitled
     }
 
+    /// The lanes as timelines, or as a list of each person's day.
+    enum LanesStyle: String, CaseIterable {
+        case timeline
+        case list
+    }
+
     /// One day's data, kept while the app runs.
     struct Day {
         var input: DayInput
@@ -58,7 +64,6 @@ final class AppModel {
     private(set) var warnings: [RulesIssue] = []
     /// The saved rules were unusable; the last good copy is in use.
     private(set) var recoveredFrom: String?
-    private(set) var bundledUpdateAvailable = false
     private(set) var calendarAccess: EventKitSource.Access
     private(set) var remindersAccess: EventKitSource.Access
     private(set) var planner: DayPlanner?
@@ -71,10 +76,19 @@ final class AppModel {
     private(set) var doneNeedsByDay: [LocalDate: Set<String>] = [:]
     /// The day on screen.
     var selectedDate: LocalDate
+    private var lanesStyleChoice: LanesStyle = .timeline
+    /// Remembered on this phone; seeded runs always start on the timeline.
+    var lanesStyle: LanesStyle {
+        get { lanesStyleChoice }
+        set {
+            lanesStyleChoice = newValue
+            if !isSeeded { UserDefaults.standard.set(newValue.rawValue, forKey: Self.lanesStyleKey) }
+        }
+    }
+    private static let lanesStyleKey = "lanes.style"
 
     @ObservationIgnored let store: HouseholdStore
     @ObservationIgnored private let source = EventKitSource()
-    @ObservationIgnored private var bundled: Data?
 
     var rules: HouseholdRules? { planner?.rules }
 
@@ -96,6 +110,7 @@ final class AppModel {
             let start = AppLaunch.pinnedNow ?? Date()
             now = start
             selectedDate = HouseholdClock.chicago.localDate(of: start)
+            lanesStyleChoice = UserDefaults.standard.string(forKey: Self.lanesStyleKey).flatMap(LanesStyle.init(rawValue:)) ?? .timeline
         }
     }
 
@@ -129,11 +144,9 @@ final class AppModel {
             }
             data = file
         }
-        bundled = data
         do {
             let loaded = try store.load(bundled: data)
             recoveredFrom = loaded.recoveredFrom?.description
-            bundledUpdateAvailable = loaded.bundledUpdateAvailable
             try use(loaded.rules, warnings: loaded.warnings)
             status = .ready
         } catch {
@@ -406,22 +419,15 @@ final class AppModel {
         return importRules(data)
     }
 
-    /// Takes the household.json that shipped with this build.
-    func importBundledRules() -> [RulesIssue] {
-        guard let bundled else { return [RulesIssue(.error, "", "No bundled rules.")] }
-        return importRules(bundled)
-    }
-
     private func importRules(_ data: Data) -> [RulesIssue] {
         do {
-            let loaded = try store.importRules(data, bundled: bundled)
+            let loaded = try store.importRules(data)
             try use(loaded.rules, warnings: loaded.warnings)
         } catch let error as RulesError {
             return error.issues
         } catch {
             return [RulesIssue(.error, "", String(describing: error))]
         }
-        bundledUpdateAvailable = false
         recoveredFrom = nil
         replanLoadedDays()
         Task { await refresh() }

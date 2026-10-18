@@ -5,7 +5,7 @@
 
   "todo": [
     "Replace every <placeholder> name (and Grandma's, if you like), and add the nicknames you use in calendar titles as aliases.",
-    "Set the three calendar titles exactly as iOS shows them: the shared family calendar, yours, and your wife's.",
+    "In the app, open Household › Calendars and say who each of your phone's calendars belongs to. The family calendar: everyone, and an event that names nobody goes to Jess.",
     "Preschool hours are a guess (09:00-11:30). Who does Tue/Thu drop-off and pickup?",
     "In-laws' morning hand-off time is a guess (08:00). Do they come to you, or do you drop off?",
     "On a weekday with no kindergarten, who has the eldest, and when does the loop run? fallbackStart is a guess (17:00).",
@@ -60,11 +60,7 @@
     { "id": "grandma", "name": "Grandma", "group": "grandparents", "color": "#FFD34E" }
   ],
 
-  "calendars": [
-    { "title": "<Family calendar>", "members": "everyone", "ifNobodyNamed": ["grandpa"] },
-    { "title": "<Your calendar>", "members": ["dad"] },
-    { "title": "<Wife's calendar>", "members": ["mom"] }
-  ],
+  "calendars": [],
 
   "blocks": [
     {
