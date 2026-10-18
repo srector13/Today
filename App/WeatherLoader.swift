@@ -16,31 +16,60 @@ enum WeatherLoader {
 
     static let fallbackLegalPage = URL(string: "https://weatherkit.apple.com/legal-attribution.html")!
 
-    static func load(_ home: HomeLocation, date: LocalDate, clock: HouseholdClock) async throws -> Result {
+    /// Today: the current conditions and today's hours. Another day: that
+    /// day's forecast, with its high standing in for "now".
+    static func load(_ home: HomeLocation, date: LocalDate, clock: HouseholdClock, isToday: Bool) async throws -> Result {
         let location = CLLocation(latitude: home.latitude, longitude: home.longitude)
         let service = WeatherService.shared
-        let (current, hourly, daily) = try await service.weather(for: location, including: .current, .hourly, .daily)
         let dayStart = clock.startOfDay(date)
         let dayEnd = clock.endOfDay(date)
-        let today = daily.forecast.first { $0.date >= dayStart.addingTimeInterval(-12 * 3600) && $0.date < dayEnd }
-            ?? daily.forecast.first
-        let hours = hourly.forecast
-            .filter { $0.date >= dayStart && $0.date < dayEnd }
+        let snapshot: WeatherSnapshot
+        if isToday {
+            let (current, hourly, daily) = try await service.weather(for: location, including: .current, .hourly, .daily)
+            let day = daily.forecast.first { $0.date >= dayStart.addingTimeInterval(-12 * 3600) && $0.date < dayEnd }
+                ?? daily.forecast.first
+            let temperature = fahrenheit(current.temperature)
+            snapshot = WeatherSnapshot(
+                temperature: temperature,
+                condition: current.condition.description,
+                symbol: current.symbolName,
+                high: day.map { fahrenheit($0.highTemperature) } ?? temperature,
+                low: day.map { fahrenheit($0.lowTemperature) } ?? temperature,
+                hours: hours(hourly.forecast, from: dayStart, to: dayEnd)
+            )
+        } else {
+            let (hourly, daily) = try await service.weather(
+                for: location,
+                including: .hourly(startDate: dayStart, endDate: dayEnd),
+                .daily(startDate: dayStart.addingTimeInterval(-12 * 3600), endDate: dayEnd)
+            )
+            guard let day = daily.forecast.last(where: { $0.date < dayEnd }) else { throw NoForecast() }
+            let high = fahrenheit(day.highTemperature)
+            snapshot = WeatherSnapshot(
+                temperature: high,
+                condition: day.condition.description,
+                symbol: day.symbolName,
+                high: high,
+                low: fahrenheit(day.lowTemperature),
+                hours: hours(hourly.forecast, from: dayStart, to: dayEnd),
+                isCurrent: false
+            )
+        }
+        let legalPage = try? await service.attribution.legalPageURL
+        return Result(snapshot: snapshot, legalPage: legalPage ?? fallbackLegalPage)
+    }
+
+    struct NoForecast: LocalizedError {
+        var errorDescription: String? { "No forecast for that day yet." }
+    }
+
+    private static func hours(_ forecast: [HourWeather], from start: Date, to end: Date) -> [WeatherSnapshot.Hour] {
+        forecast
+            .filter { $0.date >= start && $0.date < end }
             .map { hour in
                 WeatherSnapshot.Hour(time: hour.date, temperature: fahrenheit(hour.temperature),
                                      precipitationChance: hour.precipitationChance, symbol: hour.symbolName)
             }
-        let currentTemperature = fahrenheit(current.temperature)
-        let snapshot = WeatherSnapshot(
-            temperature: currentTemperature,
-            condition: current.condition.description,
-            symbol: current.symbolName,
-            high: today.map { fahrenheit($0.highTemperature) } ?? currentTemperature,
-            low: today.map { fahrenheit($0.lowTemperature) } ?? currentTemperature,
-            hours: hours
-        )
-        let legalPage = try? await service.attribution.legalPageURL
-        return Result(snapshot: snapshot, legalPage: legalPage ?? fallbackLegalPage)
     }
 
     static func fahrenheit(_ temperature: Measurement<UnitTemperature>) -> Int {

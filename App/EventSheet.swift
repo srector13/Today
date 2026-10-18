@@ -1,15 +1,20 @@
 import SwiftUI
 import TodayCore
 
-/// "Why is this here?": whose lane an item is on and the rule that put it
-/// there. For calendar events: Move to (a rule for events with this exact
-/// title), Make a rule, Hide from Today, Open in Calendar.
+/// "Why is this here?": whose lane an item is on and what put it there.
+/// For calendar events: pick who it's for (just this event, every repeat,
+/// or every event with its title), Make a Rule, Hide from Today, Open in
+/// Calendar.
 struct EventSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     let item: TimelineItem
-    @State private var moved: String?
+    let date: LocalDate
+    @State private var chosen: Set<PersonID> = []
+    @State private var scope: AppModel.PickScope = .thisEvent
+    @State private var started = false
+    @State private var message: String?
     @State private var draft: AssignmentRule?
     @State private var issues: [RulesIssue] = []
 
@@ -20,11 +25,16 @@ struct EventSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .task {
+            guard !started else { return }
+            started = true
+            chosen = Set(item.people)
+        }
         .sheet(item: $draft) { rule in
             RuleEditor(rule: rule, isNew: true, insertAtTop: true)
                 .environment(model)
         }
-        .alert("Couldn't save the rule", isPresented: Binding(
+        .alert("Couldn't save", isPresented: Binding(
             get: { !issues.isEmpty }, set: { if !$0 { issues = [] } }
         )) {
             Button("OK", role: .cancel) {}
@@ -33,21 +43,26 @@ struct EventSheet: View {
         }
     }
 
-    /// The item as the plan has it now, so the sheet follows a move.
+    /// The item as the plan has it now, so the sheet follows a pick.
     private var current: TimelineItem {
-        model.plan?.items.first { $0.id == item.id } ?? model.plan?.hiddenItems.first { $0.id == item.id } ?? item
+        guard let plan = model.plan(on: date) else { return item }
+        return plan.items.first { $0.id == item.id }
+            ?? plan.hiddenItems.first { $0.id == item.id }
+            ?? plan.unassigned.first { $0.id == item.id }
+            ?? item
     }
 
     private func content(_ planner: DayPlanner) -> some View {
         let item = current
         let why = planner.explain(item)
         let lanes = LaneOption.all(planner.rules)
+        let pick = model.pick(for: item)
         return List {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.title)
                         .font(.title2.bold())
-                    Text(when(planner))
+                    Text(when(planner, item))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Text(why.source)
@@ -72,43 +87,62 @@ struct EventSheet: View {
                     Text(reason)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("why.reason")
                 }
             }
-            if why.isEvent {
+            if why.isEvent, let event = item.event {
                 Section {
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 8) {
-                            ForEach(lanes) { lane in
-                                Button {
-                                    move(to: lane)
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Avatar(initials: lane.initials, color: lane.color, photo: model.photoURL(lane.photo), size: 22)
-                                        Text(lane.label).font(.subheadline.weight(.semibold))
-                                    }
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Theme.inset, in: Capsule())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityIdentifier("why.move.\(lane.id)")
+                    FlowLayout(spacing: 8) {
+                        ForEach(lanes) { lane in
+                            let on = Set(lane.people).isSubset(of: chosen)
+                            Button {
+                                if on { chosen.subtract(lane.people) } else { chosen.formUnion(lane.people) }
+                                message = nil
+                            } label: {
+                                PersonChip(name: lane.label, initials: lane.initials, color: lane.color, selected: on)
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(on ? .isSelected : [])
+                            .accessibilityIdentifier("why.pick.\(lane.id)")
                         }
                     }
-                    .scrollIndicators(.hidden)
-                    if let moved {
-                        Text(moved)
+                    .padding(.vertical, 4)
+                    Picker("For", selection: $scope) {
+                        Text("Just this event").tag(AppModel.PickScope.thisEvent)
+                        if event.isRecurring {
+                            Text("Every repeat").tag(AppModel.PickScope.everyRepeat)
+                        }
+                        Text("Every “\(event.title)”").tag(AppModel.PickScope.everyTitled)
+                    }
+                    .accessibilityIdentifier("why.scope")
+                    Button {
+                        assign(item)
+                    } label: {
+                        Label("Assign", systemImage: "person.crop.circle.badge.checkmark")
+                    }
+                    .disabled(chosen.isEmpty)
+                    .accessibilityIdentifier("why.assign")
+                    if pick != nil {
+                        Button("Clear My Pick", role: .destructive) {
+                            model.clearPick(for: item)
+                            chosen = Set(current.people)
+                            message = "Back to the rules for this event."
+                        }
+                        .accessibilityIdentifier("why.clear")
+                    }
+                    if let message {
+                        Text(message)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text("Move to")
+                    Text(item.people.isEmpty ? "Who's it for?" : "Assign to")
                 } footer: {
-                    Text("Adds a rule at the top of Household › Rules for events titled “\(item.title)”.")
+                    Text("“Just this event” and “Every repeat” are your picks; they beat every rule. “Every …” adds a rule at the top of Household › Rules.")
                 }
                 Section {
                     Button {
-                        draft = planner.rules.draftRule(containing: item.title, assignTo: item.people)
+                        draft = planner.rules.draftRule(containing: item.title, assignTo: Array(chosen.isEmpty ? Set(item.people) : chosen))
                     } label: {
                         Label("Make a Rule…", systemImage: "line.3.horizontal.decrease.circle")
                     }
@@ -135,19 +169,23 @@ struct EventSheet: View {
         }
     }
 
-    private func when(_ planner: DayPlanner) -> String {
+    private func when(_ planner: DayPlanner, _ item: TimelineItem) -> String {
         let clock = planner.clock
-        let date = DisplayFormat.weekdayShortDate(clock.localDate(of: item.start))
-        if item.isAllDay { return "\(date) · all day" }
-        return "\(date) · \(DisplayFormat.twelveHourSpan(clock.localTime(of: item.start), clock.localTime(of: item.end)))"
+        let day = DisplayFormat.weekdayShortDate(clock.localDate(of: item.start))
+        if item.isAllDay { return "\(day) · all day" }
+        return "\(day) · \(DisplayFormat.twelveHourSpan(clock.localTime(of: item.start), clock.localTime(of: item.end)))"
     }
 
-    private func move(to lane: LaneOption) {
-        guard var rules = model.rules else { return }
-        let rule = rules.moveEvents(titled: item.title, to: lane.people)
-        issues = model.save(rules)
-        if issues.isEmpty {
-            moved = "Events titled “\(item.title)” now go to \(lane.label) (rule “\(rule.name)”)."
+    private func assign(_ item: TimelineItem) {
+        guard let rules = model.rules else { return }
+        let people = rules.people.map(\.id).filter { chosen.contains($0) }
+        issues = model.assign(item, to: people, scope: scope)
+        guard issues.isEmpty else { return }
+        let names = model.planner?.names(people) ?? ""
+        switch scope {
+        case .thisEvent: message = "This event is \(DisplayFormat.possessive(names)) now."
+        case .everyRepeat: message = "Every repeat is \(DisplayFormat.possessive(names)) now."
+        case .everyTitled: message = "Events titled “\(item.title)” now go to \(names)."
         }
     }
 

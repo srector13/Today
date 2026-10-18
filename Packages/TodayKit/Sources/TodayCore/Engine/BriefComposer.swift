@@ -113,7 +113,9 @@ public struct BriefComposer: Sendable {
             }
         }
 
-        if let weather {
+        if let weather, !weather.isCurrent {
+            sentences.append("The forecast: \(weather.condition.lowercased()), with a high of \(weather.high) and a low of \(weather.low).")
+        } else if let weather {
             var text = "It's \(weather.temperature) degrees and \(weather.condition.lowercased())"
             if kind == .morning { text += ", with a high of \(weather.high)" }
             sentences.append(text + ".")

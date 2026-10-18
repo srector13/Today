@@ -229,6 +229,7 @@ private struct RulePreviewSection: View {
     private func describe(_ assignment: EventAssignment?) -> String {
         guard let assignment else { return "Nobody" }
         if assignment.hidden { return "Hidden" }
+        if assignment.attribution == .unassigned { return "Needs a person" }
         var text = assignment.people.isEmpty ? "Nobody" : planner.names(assignment.people)
         if let importance = assignment.importance, importance != .normal { text += " · \(importance.label)" }
         return text

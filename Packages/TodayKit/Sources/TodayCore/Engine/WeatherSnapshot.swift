@@ -30,14 +30,21 @@ public struct WeatherSnapshot: Sendable, Equatable {
     public let high: Int
     public let low: Int
     public let hours: [Hour]
+    /// Conditions now; `false` for another day's forecast, where
+    /// `temperature` is the high.
+    public let isCurrent: Bool
 
-    public init(temperature: Int, condition: String, symbol: String, high: Int, low: Int, hours: [Hour]) {
+    public init(
+        temperature: Int, condition: String, symbol: String, high: Int, low: Int, hours: [Hour],
+        isCurrent: Bool = true
+    ) {
         self.temperature = temperature
         self.condition = condition
         self.symbol = symbol
         self.high = high
         self.low = low
         self.hours = hours
+        self.isCurrent = isCurrent
     }
 
     /// From this chance up, rain is "likely" (the card tints the hour).

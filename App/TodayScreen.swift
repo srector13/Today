@@ -25,127 +25,231 @@ struct RootView: View {
     }
 }
 
-/// The main screen: header with the ▶ brief, the day's status chips and
-/// alerts, Up next, the lanes for the rest of today, then weather, kids'
-/// needs and birthdays.
+/// An item tapped on a day's page, for the "Why is this here?" sheet.
+struct SelectedItem: Identifiable {
+    let item: TimelineItem
+    let date: LocalDate
+
+    var id: String { "\(date.iso)/\(item.id)" }
+}
+
+/// The main screen: one page per day, swiped left and right. Each page has
+/// the header with the ▶ brief, the day's chips and alerts, Up next, the
+/// lanes, then weather, kids' needs and birthdays.
 struct TodayScreen: View {
     @Environment(AppModel.self) private var model
-    @Environment(BriefSpeaker.self) private var speaker
     @State private var showHousehold = false
-    @State private var selected: TimelineItem?
+    @State private var selected: SelectedItem?
     @State private var showWarnings = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                if let text = speaker.text {
-                    BriefCard(text: text, isSpeaking: speaker.isSpeaking) { speaker.dismiss() }
+        @Bindable var model = model
+        Group {
+            switch model.status {
+            case .loading:
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case let .rulesError(message):
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        DayHeader(date: model.today, showHousehold: $showHousehold)
+                        RulesErrorCard(message: message)
+                    }
+                    .padding(.horizontal, 16)
                 }
-                switch model.status {
-                case .loading:
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
-                case let .rulesError(message):
-                    RulesErrorCard(message: message)
-                case .ready:
-                    if let plan = model.plan, let planner = model.planner {
-                        DayContent(plan: plan, planner: planner, selected: $selected, showWarnings: $showWarnings)
-                    } else {
-                        ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
+            case .ready:
+                TabView(selection: $model.selectedDate) {
+                    ForEach(model.pageDates, id: \.self) { date in
+                        DayPage(date: date, selected: $selected, showHousehold: $showHousehold, showWarnings: $showWarnings)
+                            .environment(\.isCurrentPage, date == model.selectedDate)
+                            .tag(date)
                     }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 40)
         }
-        .scrollIndicators(.hidden)
         .background(Theme.background.ignoresSafeArea())
         .sheet(isPresented: $showHousehold) {
             HouseholdScreen()
                 .environment(model)
         }
-        .sheet(item: $selected) { item in
-            EventSheet(item: item)
+        .sheet(item: $selected) { selection in
+            EventSheet(item: selection.item, date: selection.date)
                 .environment(model)
         }
         .sheet(isPresented: $showWarnings) {
             WarningsSheet(warnings: model.warnings)
         }
     }
+}
 
-    private var header: some View {
+extension EnvironmentValues {
+    /// Whether this day's page is the one on screen. Neighbouring pages stay
+    /// loaded, so the UI tests' identifiers are only given to this one.
+    @Entry var isCurrentPage = true
+}
+
+/// An accessibility identifier that only the page on screen carries.
+private struct PageIdentifier: ViewModifier {
+    let id: String
+    @Environment(\.isCurrentPage) private var isCurrentPage
+
+    func body(content: Content) -> some View {
+        content.accessibilityIdentifier(isCurrentPage ? id : "\(id)~offscreen")
+    }
+}
+
+extension View {
+    func pageIdentifier(_ id: String) -> some View {
+        modifier(PageIdentifier(id: id))
+    }
+}
+
+/// One day: its header, then the plan once it's loaded.
+private struct DayPage: View {
+    @Environment(AppModel.self) private var model
+    @Environment(BriefSpeaker.self) private var speaker
+    let date: LocalDate
+    @Binding var selected: SelectedItem?
+    @Binding var showHousehold: Bool
+    @Binding var showWarnings: Bool
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                DayHeader(date: date, showHousehold: $showHousehold)
+                if let text = speaker.text, speaker.date == date {
+                    BriefCard(text: text, isSpeaking: speaker.isSpeaking) { speaker.dismiss() }
+                }
+                if let plan = model.plan(on: date), let planner = model.planner {
+                    DayContent(date: date, plan: plan, planner: planner, selected: $selected, showWarnings: $showWarnings)
+                } else {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 40)
+        }
+        .scrollIndicators(.hidden)
+        .task(id: date) { await model.loadDay(date) }
+    }
+}
+
+/// "October 20 · 2:40 PM" / "Tomorrow · October 21", the weekday, ▶, and
+/// the Today and Household buttons.
+private struct DayHeader: View {
+    @Environment(AppModel.self) private var model
+    @Environment(BriefSpeaker.self) private var speaker
+    let date: LocalDate
+    @Binding var showHousehold: Bool
+
+    var body: some View {
+        let speaking = speaker.isSpeaking && speaker.date == date
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(dateLine)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.secondary)
                 HStack(spacing: 10) {
-                    Text(weekday)
+                    Text(DisplayFormat.weekdayName(date.weekday))
                         .font(.largeTitle.bold())
+                        .minimumScaleFactor(0.7)
+                        .lineLimit(1)
                         .accessibilityAddTraits(.isHeader)
-                        .accessibilityIdentifier("today.title")
+                        .pageIdentifier("today.title")
                     Button {
-                        if let text = model.briefText() { speaker.toggle(text) }
+                        if let text = model.briefText(on: date) { speaker.toggle(text, for: date) }
                     } label: {
-                        Image(systemName: speaker.isSpeaking ? "stop.fill" : "play.fill")
+                        Image(systemName: speaking ? "stop.fill" : "play.fill")
                             .font(.footnote.weight(.bold))
                             .frame(width: 18, height: 18)
                     }
                     .buttonStyle(.glass)
                     .buttonBorderShape(.circle)
-                    .disabled(model.plan == nil)
-                    .accessibilityLabel(speaker.isSpeaking ? "Stop the brief" : "Play the brief")
-                    .accessibilityIdentifier("brief.play")
+                    .disabled(model.plan(on: date) == nil)
+                    .accessibilityLabel(speaking ? "Stop the brief" : "Play the brief")
+                    .pageIdentifier("brief.play")
                 }
             }
             Spacer()
-            Button {
-                showHousehold = true
-            } label: {
-                Image(systemName: "person.2.fill")
-                    .font(.body.weight(.semibold))
-                    .frame(width: 26, height: 26)
+            HStack(spacing: 8) {
+                if date != model.today {
+                    Button {
+                        withAnimation { model.selectedDate = model.today }
+                    } label: {
+                        Text("Today")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 4)
+                            .frame(height: 26)
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityLabel("Back to today")
+                    .pageIdentifier("today.jump")
+                }
+                Button {
+                    showHousehold = true
+                } label: {
+                    Image(systemName: "person.2.fill")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .accessibilityLabel("Household: people, rules and schedule")
+                .pageIdentifier("household.open")
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .accessibilityLabel("Household: people, rules and schedule")
-            .accessibilityIdentifier("household.open")
         }
         .padding(.top, 8)
     }
 
-    private var weekday: String {
-        model.date.map { DisplayFormat.weekdayName($0.weekday) } ?? "Today"
-    }
-
     private var dateLine: String {
-        guard let date = model.date, let planner = model.planner else { return " " }
-        return "\(DisplayFormat.monthDay(date)) · \(planner.clock.localTime(of: model.now).twelveHour)"
+        let offset = date.dayNumber - model.today.dayNumber
+        switch offset {
+        case 0: return "\(DisplayFormat.monthDay(date)) · \(model.clock.localTime(of: model.now).twelveHour)"
+        case 1: return "Tomorrow · \(DisplayFormat.monthDay(date))"
+        case -1: return "Yesterday · \(DisplayFormat.monthDay(date))"
+        default: return DisplayFormat.monthDay(date)
+        }
     }
 }
 
 /// Everything under the header once the day is planned.
 private struct DayContent: View {
     @Environment(AppModel.self) private var model
+    let date: LocalDate
     let plan: DayPlan
     let planner: DayPlanner
-    @Binding var selected: TimelineItem?
+    @Binding var selected: SelectedItem?
     @Binding var showWarnings: Bool
 
     var body: some View {
         let now = model.now
+        let today = model.today
         let window = TimelineWindow.restOfDay(plan, now: now)
+        let select: (TimelineItem) -> Void = { selected = SelectedItem(item: $0, date: date) }
         VStack(alignment: .leading, spacing: 16) {
-            SetupBanners(showWarnings: $showWarnings)
-            StatusChips(plan: plan, planner: planner)
-            ForEach(Array(plan.alerts.filter { !$0.isOver(at: now) }.enumerated()), id: \.offset) { index, alert in
-                AlertCard(alert: alert)
-                    .accessibilityIdentifier("alert.\(index)")
+            if date == today {
+                SetupBanners(showWarnings: $showWarnings)
             }
-            UpNextCard(plan: plan, planner: planner, now: now, weather: model.weather) { selected = $0 }
+            StatusChips(plan: plan, planner: planner)
+            if date >= today {
+                ForEach(Array(plan.alerts.filter { !$0.isOver(at: now) }.enumerated()), id: \.offset) { index, alert in
+                    AlertCard(alert: alert)
+                        .pageIdentifier("alert.\(index)")
+                }
+            }
+            if !plan.unassigned.isEmpty {
+                NeedsPersonCard(date: date, plan: plan, planner: planner, onSelect: select)
+            }
+            if date == today {
+                UpNextCard(plan: plan, planner: planner, now: now, title: "Up next", weather: model.weather(on: date),
+                           onSelect: select)
+            } else if date > today {
+                UpNextCard(plan: plan, planner: planner, now: planner.clock.startOfDay(date), title: "First up",
+                           weather: model.weather(on: date), onSelect: select)
+            }
 
             HStack(alignment: .firstTextBaseline) {
-                Text(window.isRestOfDay ? "Rest of today" : "Today")
+                Text(date != today ? DisplayFormat.weekdayShortDate(date) : window.isRestOfDay ? "Rest of today" : "Today")
                     .font(.title2.bold())
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
@@ -155,11 +259,13 @@ private struct DayContent: View {
             }
             .padding(.horizontal, 4)
             .padding(.top, 6)
-            LanesCard(plan: plan, window: window, now: now) { selected = $0 }
+            LanesCard(plan: plan, window: window, now: now, onSelect: select)
 
-            WeatherCard()
+            if date >= today {
+                WeatherCard(date: date)
+            }
             if !plan.needs.isEmpty {
-                NeedsCard(plan: plan, planner: planner)
+                NeedsCard(date: date, plan: plan, planner: planner)
             }
             if !plan.birthdays.isEmpty {
                 BirthdaysCard(plan: plan)

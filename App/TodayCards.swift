@@ -8,6 +8,8 @@ struct UpNextCard: View {
     let plan: DayPlan
     let planner: DayPlanner
     let now: Date
+    /// "Up next" today; "First up" on a day ahead.
+    let title: String
     let weather: WeatherSnapshot?
     let onSelect: (TimelineItem) -> Void
 
@@ -21,10 +23,11 @@ struct UpNextCard: View {
             .buttonStyle(.plain)
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                Eyebrow("Up next")
-                Text("Nothing else on the calendars this iPhone can see.")
+                Eyebrow(title)
+                Text(title == "Up next" ? "Nothing else on the calendars this iPhone can see."
+                     : "Nothing on the calendars this iPhone can see.")
                     .font(.headline)
-                    .accessibilityIdentifier("upnext.title")
+                    .pageIdentifier("upnext.title")
             }
             .card(padding: 16)
         }
@@ -34,7 +37,7 @@ struct UpNextCard: View {
         let color = planner.rules.laneColor(of: next.loop?.driver ?? next.item.people.first ?? "")
         return VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Eyebrow("Up next")
+                Eyebrow(title)
                 Spacer()
                 if let hint = rainHint(next) {
                     Label(hint, systemImage: "cloud.rain.fill")
@@ -52,7 +55,7 @@ struct UpNextCard: View {
                     Text(next.item.title)
                         .font(.title2.bold())
                         .foregroundStyle(.white)
-                        .accessibilityIdentifier("upnext.title")
+                        .pageIdentifier("upnext.title")
                     Text(next.subtitle(planner: planner, now: now))
                         .font(.subheadline)
                         .foregroundStyle(Theme.secondary)
@@ -259,7 +262,7 @@ private struct LaneRow: View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(Color(white: 0.78))
                                 .frame(width: width, height: LanesCard.barHeight)
-                                .accessibilityIdentifier("lane.nodata.\(lane.label)")
+                                .pageIdentifier("lane.nodata.\(lane.label)")
                         } else if blocks.allSatisfy({ $0.style == .background }) {
                             // Work or school from the rules is still known; say
                             // "no data" after it rather than over it.
@@ -268,7 +271,7 @@ private struct LaneRow: View {
                                 .foregroundStyle(Color(white: 0.78))
                                 .padding(.trailing, 10)
                                 .frame(width: width, height: LanesCard.barHeight, alignment: .trailing)
-                                .accessibilityIdentifier("lane.nodata.\(lane.label)")
+                                .pageIdentifier("lane.nodata.\(lane.label)")
                         }
                     }
                     ForEach(blocks) { block in
@@ -288,7 +291,7 @@ private struct LaneRow: View {
         }
         .frame(height: 48)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("lane.\(lane.label)")
+        .pageIdentifier("lane.\(lane.label)")
     }
 }
 
@@ -316,7 +319,7 @@ private struct BlockView: View {
             .accessibilityElement()
             .accessibilityLabel("\(laneLabel): \(block.item.title), \(clock.localTime(of: block.item.start).twelveHour) to \(clock.localTime(of: block.item.end).twelveHour)")
             .accessibilityAddTraits(.isButton)
-            .accessibilityIdentifier("block.\(block.item.id)")
+            .pageIdentifier("block.\(block.item.id)")
     }
 
     private var frame: (y: CGFloat, height: CGFloat) {
@@ -393,7 +396,7 @@ private struct HiddenItemsLink: View {
                     .foregroundStyle(Theme.secondary)
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("hidden.toggle")
+            .pageIdentifier("hidden.toggle")
             if expanded {
                 ForEach(items) { item in
                     Button { onSelect(item) } label: {
@@ -412,20 +415,21 @@ private struct HiddenItemsLink: View {
 
 struct WeatherCard: View {
     @Environment(AppModel.self) private var model
+    let date: LocalDate
     @State private var locating = false
     @State private var locationError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Eyebrow("Weather")
-            if let weather = model.weather, let planner = model.planner {
+            if let weather = model.weather(on: date), let planner = model.planner {
                 HStack {
                     HStack(spacing: 12) {
-                        Text("\(weather.temperature)°")
+                        Text(weather.isCurrent ? "\(weather.temperature)°" : "\(weather.high)°")
                             .font(.system(size: 48, weight: .light))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(weather.condition).font(.headline)
-                            Text("H \(weather.high)°  L \(weather.low)°")
+                            Text(weather.isCurrent ? "H \(weather.high)°  L \(weather.low)°" : "High · low \(weather.low)°")
                                 .font(.subheadline)
                                 .foregroundStyle(Theme.secondary)
                         }
@@ -437,7 +441,7 @@ struct WeatherCard: View {
                         .accessibilityHidden(true)
                 }
                 HStack(spacing: 6) {
-                    ForEach(weather.hours(from: model.now, count: 5)) { hour in
+                    ForEach(hours(weather, clock: planner.clock)) { hour in
                         let wet = hour.precipitationChance >= WeatherSnapshot.likely
                         VStack(spacing: 4) {
                             Text(DisplayFormat.hourMark(planner.clock.localTime(of: hour.time).hour, first: true))
@@ -463,7 +467,7 @@ struct WeatherCard: View {
                 .font(.caption)
                 .foregroundStyle(Theme.tertiary)
             } else {
-                switch model.weatherState {
+                switch model.weatherState(on: date) {
                 case .needsHome:
                     Text("Add your home location to see the forecast here and in the brief.")
                         .font(.subheadline)
@@ -496,7 +500,13 @@ struct WeatherCard: View {
         }
         .card()
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("weather.card")
+        .pageIdentifier("weather.card")
+    }
+
+    /// Today: the next five hours. Another day: across the day, 7 AM to 7 PM.
+    private func hours(_ weather: WeatherSnapshot, clock: HouseholdClock) -> [WeatherSnapshot.Hour] {
+        if weather.isCurrent { return weather.hours(from: model.now, count: 5) }
+        return weather.hours.filter { [7, 10, 13, 16, 19].contains(clock.localTime(of: $0.time).hour) }
     }
 }
 
@@ -504,6 +514,7 @@ struct WeatherCard: View {
 
 struct NeedsCard: View {
     @Environment(AppModel.self) private var model
+    let date: LocalDate
     let plan: DayPlan
     let planner: DayPlanner
 
@@ -520,7 +531,8 @@ struct NeedsCard: View {
                             .font(.subheadline.weight(.semibold))
                         FlowLayout(spacing: 6) {
                             ForEach(need.items, id: \.self) { item in
-                                NeedChip(item: item, key: KidNeed.key(people: need.people, item: item), color: Color(color))
+                                NeedChip(date: date, item: item, key: KidNeed.key(people: need.people, item: item),
+                                         color: Color(color))
                             }
                         }
                     }
@@ -529,20 +541,21 @@ struct NeedsCard: View {
         }
         .card()
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("needs.card")
+        .pageIdentifier("needs.card")
     }
 }
 
 private struct NeedChip: View {
     @Environment(AppModel.self) private var model
+    let date: LocalDate
     let item: String
     let key: String
     let color: Color
 
     var body: some View {
-        let done = model.doneNeeds.contains(key)
+        let done = model.doneNeeds(on: date).contains(key)
         Button {
-            model.toggleNeed(key)
+            model.toggleNeed(key, on: date)
         } label: {
             HStack(spacing: 6) {
                 if done {
@@ -591,7 +604,7 @@ struct BirthdaysCard: View {
         }
         .card()
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("birthdays.card")
+        .pageIdentifier("birthdays.card")
     }
 
     @ViewBuilder
@@ -606,5 +619,77 @@ struct BirthdaysCard: View {
                 .background(pink.opacity(0.18), in: Circle())
                 .accessibilityHidden(true)
         }
+    }
+}
+
+// MARK: - Needs a person
+
+/// Events on a calendar that asks who they're for. Tap a person to pick
+/// them for that event, or the event for more choices.
+struct NeedsPersonCard: View {
+    @Environment(AppModel.self) private var model
+    let date: LocalDate
+    let plan: DayPlan
+    let planner: DayPlanner
+    let onSelect: (TimelineItem) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "person.crop.circle.badge.questionmark")
+                    .foregroundStyle(Theme.accentBlue)
+                Eyebrow("Needs a person")
+            }
+            ForEach(plan.unassigned) { item in
+                VStack(alignment: .leading, spacing: 8) {
+                    Button {
+                        onSelect(item)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title)
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                            Text(detail(item))
+                                .font(.subheadline)
+                                .foregroundStyle(Theme.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    FlowLayout(spacing: 6) {
+                        ForEach(candidates(for: item)) { lane in
+                            Button {
+                                model.assign(item, to: lane.people, scope: .thisEvent)
+                            } label: {
+                                PersonChip(name: lane.label, initials: lane.initials, color: lane.color, selected: false)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(item.title): \(lane.label)")
+                            .pageIdentifier("needs.assign.\(lane.id)")
+                        }
+                    }
+                }
+            }
+        }
+        .card(Theme.briefCard)
+        .accessibilityElement(children: .contain)
+        .pageIdentifier("needs.person")
+    }
+
+    private func detail(_ item: TimelineItem) -> String {
+        let time = item.isAllDay ? "All day"
+            : DisplayFormat.twelveHourSpan(planner.clock.localTime(of: item.start), planner.clock.localTime(of: item.end))
+        guard case let .calendar(title, _) = item.origin else { return time }
+        return "\(time) · \(title) calendar"
+    }
+
+    /// The calendar's members first; everyone if it's everyone's.
+    private func candidates(for item: TimelineItem) -> [LaneOption] {
+        let lanes = LaneOption.all(planner.rules)
+        guard case let .calendar(title, _) = item.origin,
+              case let .people(members)? = planner.rules.calendarRule(titled: title)?.members else { return lanes }
+        let mine = lanes.filter { !Set($0.people).isDisjoint(with: members) }
+        return mine.isEmpty ? lanes : mine
     }
 }

@@ -5,7 +5,7 @@ import XCTest
 /// keeps a named screenshot of each in the result bundle. CI exports them
 /// to the ci-screenshots branch.
 final class SeededDayTests: XCTestCase {
-    static let milestone = "M3"
+    static let milestone = "M5"
     static let seededDays = ["2026-10-20", "2026-10-21", "2026-10-24"]
 
     override func setUpWithError() throws {
@@ -38,6 +38,8 @@ final class SeededDayTests: XCTestCase {
                 XCTAssertEqual(upNext.label, "Pickup loop", day)
                 // The vendor call overlaps the loop.
                 XCTAssertTrue(app.descendants(matching: .any)["alert.0"].exists, day)
+                // The shared "Us" calendar asks who the conference is for.
+                XCTAssertTrue(app.descendants(matching: .any)["needs.person"].exists, day)
             default:
                 XCTAssertEqual(app.staticTexts["today.title"].label, "Saturday")
                 XCTAssertTrue(upNext.label.hasPrefix("Nothing else"), day)
@@ -118,20 +120,61 @@ final class SeededDayTests: XCTestCase {
         keepScreenshot(of: app, named: "\(Self.milestone)-household-5-schedule")
 
         tabs.buttons["Calendars"].tap()
-        XCTAssertTrue(scroll(to: app.descendants(matching: .any)["calendar.missing.Kate"], in: app))
+        XCTAssertTrue(app.buttons["calendar.Us"].waitForExistence(timeout: 10))
         keepScreenshot(of: app, named: "\(Self.milestone)-household-6-calendars")
+        app.buttons["calendar.Us"].tap()
+        XCTAssertTrue(app.switches["calendar.used"].waitForExistence(timeout: 10))
+        keepScreenshot(of: app, named: "\(Self.milestone)-household-7-calendar-editor")
+        app.buttons["editor.cancel"].tap()
+        XCTAssertTrue(scroll(to: app.descendants(matching: .any)["calendar.missing.Kate"], in: app))
     }
 
     @MainActor
-    func testMoveToMakesARule() throws {
+    func testPickSomeoneForOneEvent() throws {
         let app = launch(seed: "2026-10-20")
         tapSERC(in: app)
-        XCTAssertTrue(app.staticTexts["why.headline"].waitForExistence(timeout: 20))
-        app.buttons["why.move.dad"].tap()
-        let moved = NSPredicate(format: "label == %@", "On Sam's lane")
-        let followed = expectation(for: moved, evaluatedWith: app.staticTexts["why.headline"])
-        wait(for: [followed], timeout: 10)
-        keepScreenshot(of: app, named: "\(Self.milestone)-why-moved")
+        let headline = app.staticTexts["why.headline"]
+        XCTAssertTrue(headline.waitForExistence(timeout: 20))
+        app.buttons["why.pick.grandpa"].tap()
+        app.buttons["why.pick.dad"].tap()
+        app.buttons["why.assign"].tap()
+        let moved = expectation(for: NSPredicate(format: "label == %@", "On Sam's lane"), evaluatedWith: headline)
+        wait(for: [moved], timeout: 10)
+        XCTAssertTrue(app.staticTexts["Picked by hand for this event."].exists)
+        keepScreenshot(of: app, named: "\(Self.milestone)-why-picked")
+    }
+
+    @MainActor
+    func testNeedsAPerson() throws {
+        let app = launch(seed: "2026-10-21")
+        let card = app.descendants(matching: .any)["needs.person"]
+        XCTAssertTrue(card.waitForExistence(timeout: 20))
+        keepScreenshot(of: app, named: "\(Self.milestone)-needs-person")
+        app.buttons["needs.assign.mom"].tap()
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: card)
+        wait(for: [gone], timeout: 10)
+        XCTAssertTrue(app.descendants(matching: .any)["block.event:2026-10-21-conference"].exists)
+    }
+
+    @MainActor
+    func testSwipeBetweenDays() throws {
+        let app = launch(seed: "2026-10-20")
+        let title = app.staticTexts["today.title"]
+        XCTAssertEqual(title.label, "Tuesday")
+        app.swipeLeft()
+        let wednesday = expectation(for: NSPredicate(format: "label == %@", "Wednesday"), evaluatedWith: title)
+        wait(for: [wednesday], timeout: 10)
+        XCTAssertTrue(app.staticTexts["upnext.title"].waitForExistence(timeout: 10))
+        keepScreenshot(of: app, named: "\(Self.milestone)-swiped-to-wednesday")
+        app.swipeLeft()
+        app.swipeLeft()
+        app.swipeLeft()
+        let saturday = expectation(for: NSPredicate(format: "label == %@", "Saturday"), evaluatedWith: title)
+        wait(for: [saturday], timeout: 10)
+        app.buttons["today.jump"].tap()
+        let back = expectation(for: NSPredicate(format: "label == %@", "Tuesday"), evaluatedWith: title)
+        wait(for: [back], timeout: 10)
+        XCTAssertFalse(app.buttons["today.jump"].exists)
     }
 
     @MainActor

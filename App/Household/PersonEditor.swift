@@ -15,6 +15,7 @@ struct PersonEditor: View {
     @State private var photoRemoved = false
     @State private var newAlias = ""
     @State private var calendar: String?
+    @State private var originalCalendar: String?
     @State private var started = false
     @State private var confirmRemove = false
 
@@ -34,6 +35,7 @@ struct PersonEditor: View {
             guard !started else { return }
             started = true
             calendar = model.rules?.personalCalendar(of: person.id)
+            originalCalendar = calendar
         }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
@@ -146,7 +148,7 @@ struct PersonEditor: View {
                     }
                 }
             } footer: {
-                Text("People with the same lane name share one row, like the twins. Events on their own calendar are theirs.")
+                Text("People with the same lane name share one row, like the twins. Events on their own calendar are theirs. Calendars several people share are set up under Calendars.")
             }
             if !isNew {
                 Section {
@@ -216,7 +218,9 @@ struct PersonEditor: View {
         } else if let index = rules.people.firstIndex(where: { $0.id == person.id }) {
             rules.people[index] = edited
         }
-        rules.setPersonalCalendar(calendar, for: edited.id)
+        if calendar != originalCalendar || isNew {
+            rules.setPersonalCalendar(calendar, for: edited.id)
+        }
         issues = model.save(rules)
         if issues.isEmpty { dismiss() }
     }
@@ -225,7 +229,9 @@ struct PersonEditor: View {
         guard var rules = model.rules else { return }
         rules.removePerson(person.id)
         issues = model.save(rules)
-        if issues.isEmpty { dismiss() }
+        guard issues.isEmpty else { return }
+        model.forgetPicks(of: person.id)
+        dismiss()
     }
 
     /// A centered square crop, 512 px, as JPEG.

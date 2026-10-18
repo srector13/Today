@@ -8,6 +8,12 @@ struct CalendarsTab: View {
     @Environment(AppModel.self) private var model
     let planner: DayPlanner
     @State private var issues: [RulesIssue] = []
+    @State private var editing: EditingCalendar?
+
+    struct EditingCalendar: Identifiable {
+        let title: String
+        var id: String { title }
+    }
 
     private var rules: HouseholdRules { planner.rules }
 
@@ -29,8 +35,8 @@ struct CalendarsTab: View {
             }
             Section("On this iPhone") {
                 ForEach(model.deviceCalendars) { calendar in
-                    CalendarRow(calendar: calendar, planner: planner) { use in
-                        update { $0.setUse(use, ofCalendar: calendar.title) }
+                    CalendarRow(calendar: calendar, planner: planner) {
+                        editing = EditingCalendar(title: calendar.title)
                     }
                 }
                 if model.deviceCalendars.isEmpty {
@@ -43,16 +49,22 @@ struct CalendarsTab: View {
             if !missing.isEmpty {
                 Section {
                     ForEach(missing, id: \.title) { calendar in
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(Theme.warning)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(calendar.title).font(.headline)
-                                Text(missingText(calendar))
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
+                        Button {
+                            editing = EditingCalendar(title: calendar.title)
+                        } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(Theme.warning)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(calendar.title).font(.headline).foregroundStyle(.primary)
+                                    Text(missingText(calendar))
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("calendar.missing.\(calendar.title)")
                     }
@@ -81,6 +93,10 @@ struct CalendarsTab: View {
                 }
             }
         }
+        .sheet(item: $editing) { calendar in
+            CalendarEditor(title: calendar.title, rule: rules.calendarRule(titled: calendar.title))
+                .environment(model)
+        }
         .alert("Can't save", isPresented: Binding(get: { !issues.isEmpty }, set: { if !$0 { issues = [] } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -97,11 +113,13 @@ struct CalendarsTab: View {
     }
 
     private func missingText(_ calendar: CalendarRule) -> String {
-        switch calendar.role {
-        case .personal:
-            let owner = calendar.owner.map { planner.names([$0]) } ?? "Its owner"
+        switch calendar.members {
+        case let .people(ids) where ids.count == 1:
+            let owner = planner.names(ids)
             return "\(DisplayFormat.possessive(owner)) calendar isn't shared to this iPhone, so \(DisplayFormat.possessive(owner)) lane shows “No data”, never a free day."
-        case .shared:
+        case let .people(ids):
+            return "This calendar isn't on this iPhone, so \(planner.names(ids)) show “No data” until it is."
+        case .everyone:
             return "This shared calendar isn't on this iPhone, so every lane shows “No data” until it is."
         }
     }
@@ -116,54 +134,150 @@ struct CalendarsTab: View {
 private struct CalendarRow: View {
     let calendar: DeviceCalendar
     let planner: DayPlanner
-    let onChange: (HouseholdRules.CalendarUse) -> Void
+    let onEdit: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Circle()
-                .fill(Color(hex: calendar.colorHex) ?? .gray)
-                .frame(width: 12, height: 12)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(calendar.title)
-                Text(roleText)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if !calendar.isBirthdays {
-                Menu {
-                    Section("Shared: nobody named goes to") {
-                        ForEach(planner.rules.people) { person in
-                            Button(person.name) { onChange(.shared(defaultOwner: person.id)) }
-                        }
-                        Button("Nobody") { onChange(.shared(defaultOwner: nil)) }
-                    }
-                    Section("Someone's own calendar") {
-                        ForEach(planner.rules.people) { person in
-                            Button(person.name) { onChange(.personal(owner: person.id)) }
-                        }
-                    }
-                    Button("Not Used", role: .destructive) { onChange(.ignored) }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.title3)
+        Button(action: onEdit) {
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(Color(hex: calendar.colorHex) ?? .gray)
+                    .frame(width: 12, height: 12)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(calendar.title).foregroundStyle(.primary)
+                    Text(roleText)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
-                .accessibilityLabel("Change what \(calendar.title) is")
-                .accessibilityIdentifier("calendar.menu.\(calendar.title)")
+                Spacer()
+                if !calendar.isBirthdays {
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .disabled(calendar.isBirthdays)
+        .accessibilityIdentifier("calendar.\(calendar.title)")
     }
 
     private var roleText: String {
         if calendar.isBirthdays { return "Birthdays card only" }
-        switch planner.rules.use(ofCalendar: calendar.title) {
-        case .ignored:
-            return "Not used"
-        case let .shared(owner):
-            return owner.map { "Shared · nobody named → \(planner.names([$0]))" } ?? "Shared · events need a name"
-        case let .personal(owner):
-            return "\(DisplayFormat.possessive(planner.names([owner]))) calendar"
+        guard let rule = planner.rules.calendarRule(titled: calendar.title) else { return "Not used" }
+        return HouseholdText(planner: planner).calendar(rule)
+    }
+}
+
+/// One calendar: who it belongs to, and who gets an event whose title
+/// names nobody.
+struct CalendarEditor: View {
+    enum Unnamed: Hashable {
+        case members, ask, people
+    }
+
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    @State private var used: Bool
+    @State private var everyone: Bool
+    @State private var members: [PersonID]
+    @State private var unnamed: Unnamed
+    @State private var unnamedPeople: [PersonID]
+    @State private var issues: [RulesIssue] = []
+
+    init(title: String, rule: CalendarRule?) {
+        self.title = title
+        _used = State(initialValue: rule != nil)
+        switch rule?.members {
+        case .everyone?:
+            _everyone = State(initialValue: true)
+            _members = State(initialValue: [])
+        case let .people(ids)?:
+            _everyone = State(initialValue: false)
+            _members = State(initialValue: ids)
+        case nil:
+            _everyone = State(initialValue: false)
+            _members = State(initialValue: [])
         }
+        switch rule?.ifNobodyNamed {
+        case .ask?:
+            _unnamed = State(initialValue: .ask)
+            _unnamedPeople = State(initialValue: [])
+        case let .people(ids)?:
+            _unnamed = State(initialValue: .people)
+            _unnamedPeople = State(initialValue: ids)
+        case .members?, nil:
+            _unnamed = State(initialValue: .members)
+            _unnamedPeople = State(initialValue: [])
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            if let planner = model.planner {
+                form(planner)
+                    .editorChrome(title, issues: $issues) { save() }
+            }
+        }
+    }
+
+    private func form(_ planner: DayPlanner) -> some View {
+        Form {
+            Section {
+                Toggle("Show on Today", isOn: $used)
+                    .accessibilityIdentifier("calendar.used")
+            } footer: {
+                Text("Off: Today ignores this calendar's events.")
+            }
+            if used {
+                Section {
+                    Toggle("Everyone", isOn: $everyone)
+                    if !everyone {
+                        PeoplePicker(rules: planner.rules, selection: $members)
+                            .accessibilityIdentifier("calendar.members")
+                    }
+                } header: {
+                    Text("Belongs to")
+                } footer: {
+                    Text("One person makes it their own calendar. Pick several for a calendar you share, like one you and your wife both use.")
+                }
+                Section {
+                    Picker("If the title names nobody", selection: $unnamed) {
+                        Text(!everyone && members.count == 1 ? "\(planner.names(members))" : "Everyone it belongs to")
+                            .tag(Unnamed.members)
+                        Text("Ask me each time").tag(Unnamed.ask)
+                        Text("Someone specific").tag(Unnamed.people)
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                    if unnamed == .people {
+                        PeoplePicker(rules: planner.rules, selection: $unnamedPeople)
+                    }
+                } header: {
+                    Text("If the title names nobody")
+                } footer: {
+                    Text("A name in the title always wins (“Emma's dentist” goes to Emma). Your rules run first, and anything you assign by hand beats both. “Ask me” puts the event under Needs a person until you pick.")
+                }
+            }
+        }
+    }
+
+    private func save() {
+        guard var rules = model.rules else { return }
+        var rule: CalendarRule?
+        if used {
+            let ifNobodyNamed: UnnamedEvents
+            switch unnamed {
+            case .members: ifNobodyNamed = .members
+            case .ask: ifNobodyNamed = .ask
+            case .people: ifNobodyNamed = .people(unnamedPeople)
+            }
+            rule = CalendarRule(title: title, members: everyone ? .everyone : .people(members), ifNobodyNamed: ifNobodyNamed)
+        }
+        rules.setCalendar(rule, titled: title)
+        issues = model.save(rules)
+        if issues.isEmpty { dismiss() }
     }
 }
 
@@ -219,7 +333,7 @@ struct PlanTextScreen: View {
 
     var body: some View {
         ScrollView([.vertical, .horizontal]) {
-            if let plan = model.plan, let planner = model.planner {
+            if let plan = model.plan(on: model.selectedDate), let planner = model.planner {
                 Text(PlanText.render(plan, planner: planner))
                     .font(.system(size: 9, design: .monospaced))
                     .textSelection(.enabled)

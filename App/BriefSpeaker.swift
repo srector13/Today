@@ -1,5 +1,6 @@
 import AVFoundation
 import Observation
+import TodayCore
 
 /// Reads the brief aloud with the best English voice on the phone: a
 /// Premium or Enhanced download if there is one (Settings › Accessibility ›
@@ -10,6 +11,8 @@ final class BriefSpeaker: NSObject, AVSpeechSynthesizerDelegate {
     private(set) var isSpeaking = false
     /// The last brief, shown as a card under the header until closed.
     private(set) var text: String?
+    /// The day the brief is about, so its card shows on that day's page.
+    private(set) var date: LocalDate?
 
     // Kept for the app's lifetime: a synthesizer that's released mid-sentence stops.
     @ObservationIgnored private let synthesizer = AVSpeechSynthesizer()
@@ -19,15 +22,16 @@ final class BriefSpeaker: NSObject, AVSpeechSynthesizerDelegate {
         synthesizer.delegate = self
     }
 
-    func toggle(_ text: String) {
-        if isSpeaking {
+    func toggle(_ text: String, for date: LocalDate) {
+        if isSpeaking, self.date == date {
             stop()
         } else {
-            speak(text)
+            if isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
+            speak(text, for: date)
         }
     }
 
-    func speak(_ text: String) {
+    func speak(_ text: String, for date: LocalDate) {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
         try? session.setActive(true)
@@ -35,6 +39,7 @@ final class BriefSpeaker: NSObject, AVSpeechSynthesizerDelegate {
         utterance.voice = Self.bestVoice()
         synthesizer.speak(utterance)
         self.text = text
+        self.date = date
         isSpeaking = true
     }
 
@@ -47,6 +52,7 @@ final class BriefSpeaker: NSObject, AVSpeechSynthesizerDelegate {
     func dismiss() {
         if isSpeaking { stop() }
         text = nil
+        date = nil
     }
 
     private func finished() {

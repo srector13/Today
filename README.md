@@ -37,10 +37,14 @@ The Xcode project uses folder-synced groups: add a file under `App/`,
 - **Today**: the date and weekday with ▶ (reads the brief aloud and shows
   it as a card), the day's chips (school, preschool, the grandparents),
   alerts, **Up next**, the lanes for the rest of today, weather, what the
-  kids need (tap to check off; resets daily), and birthdays.
-- **Tap any block** for "Why is this here?": the rule or built-in
-  attribution behind it, **Move to** (a rule for events with that exact
-  title, added at the top), **Make a Rule**, **Hide from Today**.
+  kids need (tap to check off, per day), and birthdays. **Swipe** left and
+  right through the days (a month back, two ahead); **Today** jumps back.
+- **Tap any block** for "Why is this here?": what put it there, and **who
+  it's for**: pick people for **just this event**, **every repeat**, or
+  **every event with this title** (a rule at the top of the list). Also
+  **Make a Rule**, **Hide from Today**, **Open in Calendar**.
+- **Needs a person**: events on a calendar set to "ask me" wait in this
+  card until you tap who they're for.
 - **Household** (the people button): People (photo, name, lane color,
   group, other names, shared lane, birthday, own calendar), Rules (Mail-style,
   with a live preview of the next 14 days), Schedule (blocks, school
@@ -74,15 +78,33 @@ swift run today-plan --rules ../../Rules/household.json 2026-10-20
 
 ### How events are attributed
 
-On the `shared` family calendar an event belongs to its `defaultOwner`
-(Grandpa) unless the title names people. A name in the title wins: "Dentist -
-Emma", "Emma's dentist" and "Dentist (Emma)" all go to Emma. Matching ignores
-case and accents and only matches whole words, so "Al" never matches "Almond". On a
-`personal` calendar, events belong to the owner plus anyone named.
+Each calendar lists who it belongs to (`"members"`: one person, several, or
+`"everyone"`) and who gets an event whose title names nobody
+(`"ifNobodyNamed"`: `"members"`, `"ask"`, or a list of people):
 
-A personal calendar that isn't on the device makes its owner's lane **no
-data**; a missing shared calendar makes every lane no data, since a name in a
+```json
+{ "title": "Family", "members": "everyone",      "ifNobodyNamed": ["grandpa"] },
+{ "title": "Sam",    "members": ["dad"] },
+{ "title": "Us",     "members": ["dad", "mom"], "ifNobodyNamed": "ask" }
+```
+
+In order, the first that applies decides:
+
+1. **A pick made by hand** in the app (one event, or every repeat). Kept in
+   `assignments.json` beside the rules.
+2. **Assignment rules**, top to bottom, Mail-style.
+3. **A name in the title**: "Dentist - Emma", "Emma's dentist" and "Dentist
+   (Emma)" all go to Emma. Matching ignores case and accents and only matches
+   whole words, so "Al" never matches "Almond". On someone's own calendar the
+   named people join them.
+4. **The calendar's `ifNobodyNamed`**. `"ask"` holds the event under **Needs
+   a person** until you pick.
+
+A calendar that isn't on the device makes its members' lanes **no data**; a
+missing `"everyone"` calendar makes every lane no data, since a name in a
 title can put its events anywhere. Unknown time is never shown as free.
+Files from schema 1–2 (`role`/`owner`/`defaultOwner`) still load and are
+saved in the new form.
 
 ## Tests
 
@@ -119,5 +141,6 @@ with those capabilities: `PolarReailty.Today`, `PolarReailty.Today.widgets`,
 2. EventKit ingestion, household store, Mail-style assignment rules ✓
 3. Main screen (lanes, Up next, weather, needs, birthdays) ✓
 4. Spoken brief and in-app Household editors ✓
-5. Check-in notifications (6:30 / 12:00 / 3:15)
-6. Lock Screen + Home Screen widgets
+5. Shared calendars, picks by hand, Needs a person, swiping through days ✓
+6. Check-in notifications (6:30 / 12:00 / 3:15)
+7. Lock Screen + Home Screen widgets

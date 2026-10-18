@@ -3,8 +3,9 @@ import Observation
 import TodayCore
 import TodaySources
 
-/// The app's state: the household rules from the shared store, today's
-/// plan from EventKit, the weather, and which needs are checked off.
+/// The app's state: the household rules from the shared store, each day's
+/// plan from EventKit (any day you swipe to), the weather, manual picks, and
+/// which needs are checked off.
 ///
 /// Seeded mode (`TODAY_SEED`, Debug only) runs the same screens on the
 /// sample household and its sample events, with a pinned clock, for
@@ -27,6 +28,29 @@ final class AppModel {
         case unavailable(String)
     }
 
+    /// How far a manual pick reaches.
+    enum PickScope: Hashable {
+        case thisEvent
+        case everyRepeat
+        /// A rule for events with this exact title, at the top of the list.
+        case everyTitled
+    }
+
+    /// One day's data, kept while the app runs.
+    struct Day {
+        var input: DayInput
+        var plan: DayPlan
+        var weather: WeatherSnapshot?
+        var weatherState: WeatherState = .idle
+        var weatherFetchedAt: Date?
+    }
+
+    /// Days you can swipe to, around today.
+    static let pastDays = 30
+    static let futureDays = 60
+    /// WeatherKit forecasts this many days ahead (today included).
+    static let forecastDays = 10
+
     let seedDate: LocalDate?
     var isSeeded: Bool { seedDate != nil }
 
@@ -38,20 +62,19 @@ final class AppModel {
     private(set) var calendarAccess: EventKitSource.Access
     private(set) var remindersAccess: EventKitSource.Access
     private(set) var planner: DayPlanner?
-    private(set) var plan: DayPlan?
     private(set) var now: Date
-    private(set) var weather: WeatherSnapshot?
-    private(set) var weatherState: WeatherState = .idle
+    private(set) var days: [LocalDate: Day] = [:]
+    private(set) var manual = ManualAssignments()
     private(set) var weatherLegalPage: URL?
     private(set) var deviceCalendars: [DeviceCalendar] = []
     private(set) var deviceReminderLists: [String] = []
-    private(set) var doneNeeds: Set<String> = []
+    private(set) var doneNeeds: [LocalDate: Set<String>] = [:]
+    /// The day on screen.
+    var selectedDate: LocalDate
 
     @ObservationIgnored let store: HouseholdStore
     @ObservationIgnored private let source = EventKitSource()
     @ObservationIgnored private var bundled: Data?
-    @ObservationIgnored private var lastInput: DayInput?
-    @ObservationIgnored private var weatherFetchedAt: Date?
 
     var rules: HouseholdRules? { planner?.rules }
 
@@ -65,19 +88,33 @@ final class AppModel {
             calendarAccess = .granted
             remindersAccess = .granted
             now = AppLaunch.pinnedNow ?? SampleHousehold.now(on: seed)
+            selectedDate = seed
         } else {
             store = HouseholdStore(directory: AppRules.storeDirectory)
             calendarAccess = EventKitSource.calendarAccess
             remindersAccess = EventKitSource.remindersAccess
-            now = AppLaunch.pinnedNow ?? Date()
+            let start = AppLaunch.pinnedNow ?? Date()
+            now = start
+            selectedDate = HouseholdClock.chicago.localDate(of: start)
         }
     }
 
-    /// The day on screen: the seeded day, or today in the household's zone.
-    var date: LocalDate? {
-        if let seedDate { return seedDate }
-        return planner.map { $0.clock.localDate(of: now) }
+    var clock: HouseholdClock { planner?.clock ?? .chicago }
+
+    /// Today: the seeded day, or the date in the household's zone.
+    var today: LocalDate {
+        seedDate ?? clock.localDate(of: now)
     }
+
+    /// The days the Today screen pages through.
+    var pageDates: [LocalDate] {
+        (-Self.pastDays...Self.futureDays).map { today.adding(days: $0) }
+    }
+
+    func plan(on date: LocalDate) -> DayPlan? { days[date]?.plan }
+    func weather(on date: LocalDate) -> WeatherSnapshot? { days[date]?.weather }
+    func weatherState(on date: LocalDate) -> WeatherState { days[date]?.weatherState ?? .idle }
+    func doneNeeds(on date: LocalDate) -> Set<String> { doneNeeds[date] ?? [] }
 
     // MARK: Loading
 
@@ -103,6 +140,12 @@ final class AppModel {
             status = .rulesError(String(describing: error))
             return
         }
+        manual = store.loadAssignments()
+        manual.prune(before: today.adding(days: -Self.pastDays))
+        if !isSeeded {
+            selectedDate = today
+            doneNeeds = NeedsLog.load()
+        }
         await refresh()
     }
 
@@ -111,42 +154,68 @@ final class AppModel {
         self.warnings = warnings.filter { $0.severity == .warning }
     }
 
-    /// Rebuilds the day from what the device can read right now.
+    /// Re-reads the device: calendar access, its calendars, and every day
+    /// already shown (today and the day on screen at least).
     func refresh() async {
-        guard let planner else { return }
-        if !isSeeded { now = AppLaunch.pinnedNow ?? Date() }
-        guard let date else { return }
-        let input: DayInput
+        guard planner != nil else { return }
         if isSeeded {
-            input = SampleHousehold.input(on: date)
-            deviceCalendars = Self.sampleCalendars(on: date)
+            deviceCalendars = Self.sampleCalendars(on: today)
             deviceReminderLists = ["Groceries", "Kids"]
         } else {
+            now = AppLaunch.pinnedNow ?? Date()
             calendarAccess = EventKitSource.calendarAccess
             remindersAccess = EventKitSource.remindersAccess
-            input = await source.input(for: date, rules: planner.rules, clock: planner.clock)
             deviceCalendars = await source.deviceCalendars()
             deviceReminderLists = await source.reminderListTitles()
         }
-        lastInput = input
-        // The rules may have been saved while EventKit was reading.
-        let current = self.planner ?? planner
-        plan = current.plan(for: date, input: input)
-        doneNeeds = NeedsLog.done(on: date, persisted: !isSeeded)
-        await refreshWeather()
+        let shown = Set(days.keys).union([today, selectedDate])
+        for date in shown.sorted() {
+            await loadDay(date, force: true)
+        }
     }
 
-    /// Moves the clock on; a new day reloads everything.
+    /// Reads and plans `date` if it isn't loaded yet (or `force`).
+    func loadDay(_ date: LocalDate, force: Bool = false) async {
+        guard let planner, force || days[date] == nil else { return }
+        var input: DayInput
+        if isSeeded {
+            input = SampleHousehold.input(on: date)
+        } else {
+            input = await source.input(for: date, rules: planner.rules, clock: planner.clock)
+        }
+        input.manual = manual
+        // The rules may have been saved while EventKit was reading.
+        let plan = (self.planner ?? planner).plan(for: date, input: input)
+        if var day = days[date] {
+            day.input = input
+            day.plan = plan
+            days[date] = day
+        } else {
+            days[date] = Day(input: input, plan: plan)
+        }
+        await loadWeather(on: date)
+    }
+
+    /// Replans every loaded day from the data already read: after an edit
+    /// or a manual pick, so the screen changes at once.
+    private func replanLoadedDays() {
+        guard let planner else { return }
+        for (date, var day) in days {
+            day.input.manual = manual
+            day.plan = planner.plan(for: date, input: day.input)
+            days[date] = day
+        }
+    }
+
+    /// Moves the clock on; a new day reloads.
     func tick() {
-        guard !isSeeded, AppLaunch.pinnedNow == nil, let planner else { return }
-        let next = Date()
-        let newDay = planner.clock.localDate(of: next) != plan?.date
-        now = next
-        let stale = weatherFetchedAt.map { next.timeIntervalSince($0) > 30 * 60 } ?? true
-        if newDay {
+        guard !isSeeded, AppLaunch.pinnedNow == nil, planner != nil else { return }
+        let before = today
+        now = Date()
+        if today != before {
             Task { await refresh() }
-        } else if stale, weatherState != .needsHome {
-            Task { await refreshWeather() }
+        } else if let fetched = days[today]?.weatherFetchedAt, now.timeIntervalSince(fetched) > 30 * 60 {
+            Task { await loadWeather(on: today, force: true) }
         }
     }
 
@@ -159,27 +228,34 @@ final class AppModel {
 
     // MARK: Weather
 
-    func refreshWeather() async {
-        if let seedDate {
-            weather = SampleHousehold.weather(on: seedDate)
-            weatherState = .ready
+    func loadWeather(on date: LocalDate, force: Bool = false) async {
+        guard days[date] != nil, let planner else { return }
+        if isSeeded {
+            days[date]?.weather = SampleHousehold.weather(on: date)
+            days[date]?.weatherState = .ready
             return
         }
-        guard let planner, let date else { return }
         guard let home = planner.rules.home else {
-            weather = nil
-            weatherState = .needsHome
+            days[date]?.weather = nil
+            days[date]?.weatherState = .needsHome
             return
         }
-        if weather == nil { weatherState = .loading }
+        let ahead = date.dayNumber - today.dayNumber
+        guard (0..<Self.forecastDays).contains(ahead) else {
+            days[date]?.weather = nil
+            days[date]?.weatherState = .unavailable("Forecasts reach \(Self.forecastDays) days ahead.")
+            return
+        }
+        if !force, let fetched = days[date]?.weatherFetchedAt, now.timeIntervalSince(fetched) < 30 * 60 { return }
+        if days[date]?.weather == nil { days[date]?.weatherState = .loading }
         do {
-            let result = try await WeatherLoader.load(home, date: date, clock: planner.clock)
-            weather = result.snapshot
+            let result = try await WeatherLoader.load(home, date: date, clock: planner.clock, isToday: ahead == 0)
+            days[date]?.weather = result.snapshot
+            days[date]?.weatherState = .ready
+            days[date]?.weatherFetchedAt = Date()
             weatherLegalPage = result.legalPage
-            weatherState = .ready
-            weatherFetchedAt = Date()
         } catch {
-            weatherState = .unavailable(error.localizedDescription)
+            days[date]?.weatherState = .unavailable(error.localizedDescription)
         }
     }
 
@@ -199,19 +275,75 @@ final class AppModel {
 
     // MARK: Brief and needs
 
-    func briefText() -> String? {
-        guard let planner, let plan else { return nil }
-        return BriefComposer(planner: planner).brief(plan, now: now, weather: weather, doneNeeds: doneNeeds)
+    func briefText(on date: LocalDate) -> String? {
+        guard let planner, let plan = plan(on: date) else { return nil }
+        return BriefComposer(planner: planner).brief(plan, now: now, weather: weather(on: date),
+                                                     doneNeeds: doneNeeds(on: date))
     }
 
-    func toggleNeed(_ key: String) {
-        guard let date else { return }
-        if doneNeeds.contains(key) {
-            doneNeeds.remove(key)
+    func toggleNeed(_ key: String, on date: LocalDate) {
+        var done = doneNeeds(on: date)
+        if done.contains(key) {
+            done.remove(key)
         } else {
-            doneNeeds.insert(key)
+            done.insert(key)
         }
-        if !isSeeded { NeedsLog.save(doneNeeds, on: date) }
+        doneNeeds[date] = done
+        if !isSeeded { NeedsLog.save(doneNeeds, keepingSince: today.adding(days: -14)) }
+    }
+
+    // MARK: Manual picks
+
+    /// The pick that decides `item`, if one does.
+    func pick(for item: TimelineItem) -> ManualAssignment? {
+        guard let event = item.event else { return nil }
+        return manual.entry(for: event, on: clock.localDate(of: event.start))
+    }
+
+    /// Assigns `item`'s event to `people`: just this occurrence, every
+    /// repeat (both kept as manual picks), or every event with its title (a
+    /// rule). Returns the problems that stopped it.
+    @discardableResult
+    func assign(_ item: TimelineItem, to people: [PersonID], scope: PickScope) -> [RulesIssue] {
+        guard let event = item.event else {
+            return [RulesIssue(.error, "", "Only calendar events can be assigned.")]
+        }
+        let day = clock.localDate(of: event.start)
+        switch scope {
+        case .everyTitled:
+            guard var rules else { return [] }
+            rules.moveEvents(titled: event.title, to: people)
+            // A pick would beat the new rule for this event; the rule decides now.
+            manual.clear(for: event, on: day)
+            savePicks()
+            return save(rules)
+        case .thisEvent:
+            manual.set(people, for: event, on: day)
+        case .everyRepeat:
+            manual.set(people, for: event, on: nil)
+        }
+        savePicks()
+        replanLoadedDays()
+        return []
+    }
+
+    /// Forgets the pick for `item` (this occurrence and its series).
+    func clearPick(for item: TimelineItem) {
+        guard let event = item.event else { return }
+        manual.clear(for: event, on: clock.localDate(of: event.start))
+        savePicks()
+        replanLoadedDays()
+    }
+
+    /// Drops someone removed from the household from every pick.
+    func forgetPicks(of person: PersonID) {
+        manual.remove(person)
+        savePicks()
+        replanLoadedDays()
+    }
+
+    private func savePicks() {
+        try? store.saveAssignments(manual)
     }
 
     // MARK: Editing
@@ -230,9 +362,8 @@ final class AppModel {
         } catch {
             return [RulesIssue(.error, "timeZone", String(describing: error))]
         }
-        if let planner, let date, let lastInput {
-            plan = planner.plan(for: date, input: lastInput)
-        }
+        replanLoadedDays()
+        // Reminders lists, calendars and home may have changed: read again.
         Task { await refresh() }
         return []
     }
@@ -249,8 +380,8 @@ final class AppModel {
     /// The next two weeks of events, for the rule editor's preview.
     func upcomingEvents() async -> [SourceEvent] {
         if isSeeded { return SampleHousehold.events(from: SampleHousehold.tuesday, days: 14) }
-        guard let planner, let date else { return [] }
-        return await source.events(from: date, days: 14, clock: planner.clock)
+        guard let planner else { return [] }
+        return await source.events(from: today, days: 14, clock: planner.clock)
     }
 
     /// The rules file, written where the share sheet can pick it up.
@@ -292,6 +423,7 @@ final class AppModel {
         }
         bundledUpdateAvailable = false
         recoveredFrom = nil
+        replanLoadedDays()
         Task { await refresh() }
         return []
     }
@@ -304,6 +436,7 @@ final class AppModel {
             DeviceCalendar(title: "Family", colorHex: "#6AD07A", account: "iCloud", isBirthdays: false),
             DeviceCalendar(title: "Sam", colorHex: "#5E9EFF", account: "iCloud", isBirthdays: false),
             DeviceCalendar(title: "Kate", colorHex: "#C58CFF", account: "iCloud", isBirthdays: false),
+            DeviceCalendar(title: "Us", colorHex: "#FF9F45", account: "iCloud", isBirthdays: false),
             DeviceCalendar(title: "US Holidays", colorHex: "#8E8E93", account: "Subscribed", isBirthdays: false),
         ]
         return all.filter { onDevice.contains($0.title) }
@@ -311,17 +444,24 @@ final class AppModel {
     }
 }
 
-/// Which of a day's needs are checked off, kept for that day only.
+/// Which needs are checked off, by day, for the last two weeks.
 enum NeedsLog {
-    private static let key = "needs.done"
+    private static let key = "needs.done.byDay"
 
-    static func done(on date: LocalDate, persisted: Bool) -> Set<String> {
-        guard persisted, let saved = UserDefaults.standard.dictionary(forKey: key),
-              saved["date"] as? String == date.iso, let keys = saved["keys"] as? [String] else { return [] }
-        return Set(keys)
+    static func load() -> [LocalDate: Set<String>] {
+        guard let saved = UserDefaults.standard.dictionary(forKey: key) as? [String: [String]] else { return [:] }
+        var result: [LocalDate: Set<String>] = [:]
+        for (iso, keys) in saved {
+            if let date = LocalDate(iso: iso) { result[date] = Set(keys) }
+        }
+        return result
     }
 
-    static func save(_ keys: Set<String>, on date: LocalDate) {
-        UserDefaults.standard.set(["date": date.iso, "keys": keys.sorted()], forKey: key)
+    static func save(_ done: [LocalDate: Set<String>], keepingSince oldest: LocalDate) {
+        var saved: [String: [String]] = [:]
+        for (date, keys) in done where date >= oldest && !keys.isEmpty {
+            saved[date.iso] = keys.sorted()
+        }
+        UserDefaults.standard.set(saved, forKey: key)
     }
 }

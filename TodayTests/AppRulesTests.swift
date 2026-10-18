@@ -31,7 +31,7 @@ final class AppRulesTests: XCTestCase {
         let model = AppModel()
         await model.load()
         XCTAssertEqual(model.status, .ready)
-        XCTAssertNotNil(model.plan)
+        XCTAssertNotNil(model.plan(on: model.today))
     }
 
     @MainActor
@@ -39,10 +39,11 @@ final class AppRulesTests: XCTestCase {
         let model = AppModel(seed: SampleHousehold.tuesday)
         await model.load()
         XCTAssertEqual(model.status, .ready)
-        let plan = try XCTUnwrap(model.plan)
-        XCTAssertEqual(plan.date, SampleHousehold.tuesday)
-        XCTAssertEqual(model.weatherState, .ready)
-        let brief = try XCTUnwrap(model.briefText())
+        let day = SampleHousehold.tuesday
+        let plan = try XCTUnwrap(model.plan(on: day))
+        XCTAssertEqual(plan.date, day)
+        XCTAssertEqual(model.weatherState(on: day), .ready)
+        let brief = try XCTUnwrap(model.briefText(on: day))
         XCTAssertTrue(brief.contains("Sam drives the pickup loop at 3:30"), brief)
         XCTAssertFalse(brief.lowercased().contains("free"), brief)
     }
@@ -54,7 +55,7 @@ final class AppRulesTests: XCTestCase {
         var rules = try XCTUnwrap(model.rules)
         rules.moveEvents(titled: "Dentist", to: ["dad"])
         XCTAssertEqual(model.save(rules), [])
-        let dentist = try XCTUnwrap(model.plan?.items.first { $0.title == "Dentist" })
+        let dentist = try XCTUnwrap(model.plan(on: SampleHousehold.tuesday)?.items.first { $0.title == "Dentist" })
         XCTAssertEqual(dentist.people, ["dad"])
 
         // Invalid rules are refused and nothing changes.
@@ -69,10 +70,58 @@ final class AppRulesTests: XCTestCase {
         let model = AppModel(seed: SampleHousehold.tuesday)
         await model.load()
         let key = KidNeed.key(people: ["pre"], item: "Backpack")
-        model.toggleNeed(key)
-        XCTAssertTrue(model.doneNeeds.contains(key))
-        model.toggleNeed(key)
-        XCTAssertFalse(model.doneNeeds.contains(key))
+        let day = SampleHousehold.tuesday
+        model.toggleNeed(key, on: day)
+        XCTAssertTrue(model.doneNeeds(on: day).contains(key))
+        XCTAssertFalse(model.doneNeeds(on: day.adding(days: 2)).contains(key), "each day has its own list")
+        model.toggleNeed(key, on: day)
+        XCTAssertFalse(model.doneNeeds(on: day).contains(key))
+    }
+
+    @MainActor
+    func testOtherDaysLoadOnDemand() async throws {
+        let model = AppModel(seed: SampleHousehold.tuesday)
+        await model.load()
+        XCTAssertNil(model.plan(on: SampleHousehold.saturday))
+        await model.loadDay(SampleHousehold.saturday)
+        let saturday = try XCTUnwrap(model.plan(on: SampleHousehold.saturday))
+        XCTAssertNil(saturday.pickupLoop)
+        XCTAssertTrue(model.pageDates.contains(SampleHousehold.saturday))
+        let brief = try XCTUnwrap(model.briefText(on: SampleHousehold.saturday))
+        XCTAssertTrue(brief.hasPrefix("Here's Saturday, October 24."), brief)
+    }
+
+    @MainActor
+    func testPickingSomeoneForAnEvent() async throws {
+        let model = AppModel(seed: SampleHousehold.tuesday)
+        await model.load()
+        let wednesday = SampleHousehold.wednesday
+        await model.loadDay(wednesday)
+        let waiting = try XCTUnwrap(model.plan(on: wednesday)?.unassigned.first)
+        XCTAssertEqual(waiting.title, "Parent-teacher conference")
+
+        XCTAssertEqual(model.assign(waiting, to: ["mom"], scope: .thisEvent), [])
+        let plan = try XCTUnwrap(model.plan(on: wednesday))
+        XCTAssertTrue(plan.unassigned.isEmpty)
+        let picked = try XCTUnwrap(plan.items.first { $0.id == waiting.id })
+        XCTAssertEqual(picked.people, ["mom"])
+        XCTAssertNotNil(model.pick(for: picked))
+        // Kept on disk beside the rules.
+        XCTAssertEqual(model.store.loadAssignments().entries.count, 1)
+
+        model.clearPick(for: picked)
+        XCTAssertEqual(model.plan(on: wednesday)?.unassigned.map(\.id), [waiting.id])
+    }
+
+    @MainActor
+    func testEveryEventWithThisTitleMakesARule() async throws {
+        let model = AppModel(seed: SampleHousehold.tuesday)
+        await model.load()
+        let dentist = try XCTUnwrap(model.plan(on: SampleHousehold.tuesday)?.items.first { $0.title == "Dentist" })
+        XCTAssertEqual(model.assign(dentist, to: ["dad"], scope: .everyTitled), [])
+        XCTAssertEqual(model.rules?.assignmentRules.first?.name, "Dentist → Sam")
+        XCTAssertNil(model.pick(for: dentist))
+        XCTAssertEqual(model.plan(on: SampleHousehold.tuesday)?.items.first { $0.title == "Dentist" }?.people, ["dad"])
     }
 
     @MainActor
